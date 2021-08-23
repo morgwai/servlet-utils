@@ -9,12 +9,12 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<groupId>pl.morgwai.base</groupId>
-	<artifactId>websocket-pinger</artifactId>
+	<artifactId>servlet-utils</artifactId>
 	<version>1.0-SNAPSHOT</version>
 
-	<name>Websocket Pinger</name>
-	<description>A simple class that automatically pings and handles pongs from websocket connections</description>
-	<url>https://github.com/morgwai/websocket-pinger</url>
+	<name>Servlet utils</name>
+	<description>Some helpful classes when developing servlets</description>
+	<url>https://github.com/morgwai/servlet-utils</url>
 
 	<licenses>
 		<license>
@@ -24,9 +24,9 @@
 		</license>
 	</licenses>
 	<scm>
-		<url>https://github.com/morgwai/websocket-pinger.git</url>
-		<connection>scm:git:https://github.com/morgwai/websocket-pinger.git</connection>
-		<developerConnection>scm:git:ssh://git@github.com/morgwai/websocket-pinger.git</developerConnection>
+		<url>https://github.com/morgwai/servlet-utils.git</url>
+		<connection>scm:git:https://github.com/morgwai/servlet-utils.git</connection>
+		<developerConnection>scm:git:ssh://git@github.com/morgwai/servlet-utils.git</developerConnection>
 	</scm>
 	<developers>
 		<developer>
