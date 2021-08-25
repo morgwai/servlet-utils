@@ -45,6 +45,8 @@ public class WebsocketPinger {
 		this.pingIntervalSeconds = pingIntervalSeconds;
 		this.maxMalformedPongCount = maxMalformedPongCount;
 		pingingThread.start();
+		if (log.isInfoEnabled()) log.info("websockets will be pinged every " + pingIntervalSeconds
+				+ "s,  malformed pong limit: " + maxMalformedPongCount);
 	}
 
 	final int pingIntervalSeconds;
