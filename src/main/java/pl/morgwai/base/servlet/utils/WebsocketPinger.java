@@ -6,14 +6,16 @@ import java.nio.ByteBuffer;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.logging.Logger;
 
-import javax.websocket.PongMessage;
-import javax.websocket.Session;
+import javax.websocket.CloseReason;
 import javax.websocket.CloseReason.CloseCodes;
 import javax.websocket.Endpoint;
-import javax.websocket.CloseReason;
 import javax.websocket.MessageHandler;
+import javax.websocket.PongMessage;
+import javax.websocket.Session;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 
@@ -150,8 +152,10 @@ public class WebsocketPinger {
 			if ( ! pong.getApplicationData().equals(wrapper)) {
 				malformedCount++;
 				if (malformedCount >= maxMalformedPongCount) {
-					log.info("malformed pong count from " + connection.getId()
-							+ " exceeded, closing connection");
+					if (log.isInfoEnabled()) {
+						log.info("malformed pong count from " + connection.getId()
+								+ " exceeded, closing connection");
+					}
 					try {
 						connection.close(new CloseReason(
 								CloseCodes.PROTOCOL_ERROR, "malformed pong count exceeded"));
@@ -165,5 +169,5 @@ public class WebsocketPinger {
 
 
 
-	static final Logger log = Logger.getLogger(WebsocketPinger.class.getName());
+	static final Logger log = LoggerFactory.getLogger(WebsocketPinger.class.getName());
 }
