@@ -9,7 +9,6 @@ import java.util.concurrent.ConcurrentMap;
 
 import javax.websocket.CloseReason;
 import javax.websocket.CloseReason.CloseCodes;
-import javax.websocket.Endpoint;
 import javax.websocket.MessageHandler;
 import javax.websocket.PongMessage;
 import javax.websocket.Session;
@@ -27,15 +26,35 @@ import org.slf4j.LoggerFactory;
  * instances may be added later if number of connections is too big to handle for the existing ones.
  * </p>
  * <p>Endpoint instances should register themselves for pinging in their
- * {@link Endpoint#onOpen(Session, javax.websocket.EndpointConfig)} method using
- * {@link #addConnection(Session)} and de-register in {@link Endpoint#onClose(Session, CloseReason)}
- * using {@link #removeConnection(Session)}.</p>
+ * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig)} method using
+ * {@link #addConnection(Session)} and deregister in
+ * {@link javax.websocket.Endpoint#onClose(Session, CloseReason)} using
+ * {@link #removeConnection(Session)}.</p>
  */
 public class WebsocketPinger {
 
 
 
 	/**
+	 * Majority of proxy and NAT routers have timeout of at least 60s.
+	 */
+	public static final int DEFAULT_PING_INTERVAL = 55;
+	final int pingIntervalSeconds;
+
+	/**
+	 * Arbitrarily chosen number.
+	 */
+	public static final int DEFAULT_MAX_MALFORMED_PONG_COUNT = 5;
+	final int maxMalformedPongCount;
+
+	final Thread pingingThread = new Thread(() -> pingConnectionsPeriodically());
+
+	final ConcurrentMap<Session, PingPongPlayer> connections = new ConcurrentHashMap<>();
+
+
+
+	/**
+	 * Configures and starts the service.
 	 * @param pingIntervalSeconds how often to ping all connections.
 	 * @param maxMalformedPongCount limit after which a given connection is closed. Each valid,
 	 *     timely pong resets connection's counter. Pongs received after {@code pingIntervalSeconds}
@@ -49,48 +68,60 @@ public class WebsocketPinger {
 				+ "s,  malformed pong limit: " + maxMalformedPongCount);
 	}
 
-	final int pingIntervalSeconds;
-	final int maxMalformedPongCount;
-	final Thread pingingThread = new Thread(() -> pingPeriodically());
-
 
 
 	/**
-	 * Uses {@link #DEFAULT_PING_INTERVAL} and {@link #DEFAULT_MAX_MALFORMED_PONG_COUNT} to call
-	 * {@link #WebsocketPinger(int, int)}.
+	 * Calls {@link #WebsocketPinger(int, int) WebsocketPinger}({@link #DEFAULT_PING_INTERVAL},
+	 * {@link #DEFAULT_MAX_MALFORMED_PONG_COUNT}).
 	 */
 	public WebsocketPinger() {
 		this(DEFAULT_PING_INTERVAL, DEFAULT_MAX_MALFORMED_PONG_COUNT);
 	}
 
-	/**
-	 * Majority of proxy and NAT routers have timeout of at least 60s.
-	 */
-	public static final int DEFAULT_PING_INTERVAL = 55;
+
 
 	/**
-	 * Arbitrarily chosen number.
+	 * Registers {@code connection} for pinging. Usually called in
+	 * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig)}.
 	 */
-	public static final int DEFAULT_MAX_MALFORMED_PONG_COUNT = 5;
-
-
-
 	public void addConnection(Session connection) {
-		PongHandler handler = new PongHandler(connection);
-		connection.addMessageHandler(PongMessage.class, handler);
-		connections.put(connection, handler);
+		PingPongPlayer player = new PingPongPlayer(connection, maxMalformedPongCount);
+		connection.addMessageHandler(PongMessage.class, player);
+		connections.put(connection, player);
 	}
 
-	final ConcurrentMap<Session, PongHandler> connections = new ConcurrentHashMap<>();
 
 
-
+	/**
+	 * Deregisters {@code connection}. Usually called in
+	 * {@link javax.websocket.Endpoint#onClose(Session, CloseReason)}.
+	 */
 	public void removeConnection(Session connection) {
 		connections.remove(connection);
 	}
 
 
 
+	/**
+	 * For {@link #pingingThread}.
+	 */
+	private void pingConnectionsPeriodically() {
+		while (true) {
+			try {
+				Thread.sleep(pingIntervalSeconds * 1000l);
+				for (PingPongPlayer player: connections.values()) player.ping();
+			} catch (InterruptedException e) {
+				return;  // stop() was called
+			}
+		}
+	}
+
+
+
+	/**
+	 * Stops the service. After a call to this method the service becomes no longer usable and
+	 * should be discarded.
+	 */
 	public void stop() {
 		pingingThread.interrupt();
 		try {
@@ -102,31 +133,22 @@ public class WebsocketPinger {
 
 
 	/**
-	 * For {@link #pingingThread}.
+	 * Plays ping-pong with a single associated connection.
 	 */
-	private void pingPeriodically() {
-		while (true) {
-			try {
-				Thread.sleep(pingIntervalSeconds * 1000l);
-				for (PongHandler handler: connections.values()) handler.ping();
-			} catch (InterruptedException e) {
-				return;  // stop() was called
-			}
-		}
-	}
-
-
-
-	private class PongHandler implements MessageHandler.Whole<PongMessage> {
+	static class PingPongPlayer implements MessageHandler.Whole<PongMessage> {
 
 		final Session connection;
+		final int maxMalformedPongCount;
 
-		PongHandler(Session connection) { this.connection = connection; }
+		PingPongPlayer(Session connection, int maxMalformedPongCount) {
+			this.connection = connection;
+			this.maxMalformedPongCount = maxMalformedPongCount;
+		}
 
 
 
 		int malformedCount = 0;
-		byte[] pingData = new byte[1];  // buffer refuses to wrap null and it must wrap something
+		byte[] pingData = new byte[1];  // to not crash on some random pong before 1st ping
 		ByteBuffer wrapper = ByteBuffer.wrap(this.pingData);
 		final Random random = new Random();
 
