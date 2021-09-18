@@ -119,15 +119,26 @@ public class WebsocketPinger {
 
 
 	/**
+	 * Returns the number of currently registered connections.
+	 */
+	public int getConnectionsSize() {
+		return connections.size();
+	}
+
+
+
+	/**
 	 * Stops the service. After a call to this method the service becomes no longer usable and
 	 * should be discarded.
+	 * @return remaining registered connections.
 	 */
-	public void stop() {
+	public ConcurrentMap<Session, PingPongPlayer> stop() {
 		pingingThread.interrupt();
 		try {
 			pingingThread.join();
 			log.info("pinger stopped");
 		} catch (InterruptedException e) {}
+		return connections;
 	}
 
 
