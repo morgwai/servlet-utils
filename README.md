@@ -2,7 +2,8 @@
 
 Some helpful classes when developing servlets.<br/>
 <br/>
-**latest release: [1.0-alpha4](https://search.maven.org/artifact/pl.morgwai.base/servlet-utils/1.0-alpha4/jar)**
+**latest release: [1.0-alpha4](https://search.maven.org/artifact/pl.morgwai.base/servlet-utils/1.0-alpha4/jar)** ([javadoc](https://javadoc.io/doc/pl.morgwai.base/servlet-utils/1.0-alpha4))
+
 
 ## MAIN USER CLASSES
 
