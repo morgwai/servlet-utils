@@ -31,7 +31,7 @@ import org.slf4j.LoggerFactory;
  * {@link javax.websocket.Endpoint#onClose(Session, CloseReason)} using
  * {@link #removeConnection(Session)}.</p>
  */
-public class WebsocketPinger {
+public class WebsocketPingerService {
 
 
 
@@ -60,7 +60,7 @@ public class WebsocketPinger {
 	 *     timely pong resets connection's counter. Pongs received after {@code pingIntervalSeconds}
 	 *     count as malformed.
 	 */
-	public WebsocketPinger(int pingIntervalSeconds, int maxMalformedPongCount) {
+	public WebsocketPingerService(int pingIntervalSeconds, int maxMalformedPongCount) {
 		this.pingIntervalSeconds = pingIntervalSeconds;
 		this.maxMalformedPongCount = maxMalformedPongCount;
 		pingingThread.start();
@@ -71,10 +71,11 @@ public class WebsocketPinger {
 
 
 	/**
-	 * Calls {@link #WebsocketPinger(int, int) WebsocketPinger}({@link #DEFAULT_PING_INTERVAL},
+	 * Calls {@link #WebsocketPingerService(int, int)
+	 * WebsocketPingerService}({@link #DEFAULT_PING_INTERVAL},
 	 * {@link #DEFAULT_MAX_MALFORMED_PONG_COUNT}).
 	 */
-	public WebsocketPinger() {
+	public WebsocketPingerService() {
 		this(DEFAULT_PING_INTERVAL, DEFAULT_MAX_MALFORMED_PONG_COUNT);
 	}
 
@@ -204,5 +205,5 @@ public class WebsocketPinger {
 
 
 
-	static final Logger log = LoggerFactory.getLogger(WebsocketPinger.class.getName());
+	static final Logger log = LoggerFactory.getLogger(WebsocketPingerService.class.getName());
 }

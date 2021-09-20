@@ -6,4 +6,4 @@ Some helpful classes when developing servlets.<br/>
 
 ## MAIN USER CLASSES
 
-For now just 1 class: a simple utility that automatically pings and handles pongs from websocket connections: [WebsocketPinger](src/main/java/pl/morgwai/base/servlet/utils/WebsocketPinger.java)
+For now just 1 class: a simple utility service that automatically pings and handles pongs from websocket connections: [WebsocketPingerService](src/main/java/pl/morgwai/base/servlet/utils/WebsocketPingerService.java)
