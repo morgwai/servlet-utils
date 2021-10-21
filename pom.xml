@@ -10,7 +10,7 @@
 
 	<groupId>pl.morgwai.base</groupId>
 	<artifactId>servlet-utils</artifactId>
-	<version>1.1-SNAPSHOT</version>
+	<version>1.1-javax-SNAPSHOT</version>
 
 	<name>Servlet utils</name>
 	<description>Some helpful classes when developing servlets</description>
@@ -44,12 +44,6 @@
 	</properties>
 
 	<dependencies>
-		<dependency>
-			<groupId>javax.websocket</groupId>
-			<artifactId>javax.websocket-api</artifactId>
-			<version>1.1</version>
-			<scope>provided</scope>
-		</dependency>
 		<dependency>
 			<groupId>org.slf4j</groupId>
 			<artifactId>slf4j-api</artifactId>
@@ -92,6 +86,7 @@
 					<javadocExecutable>${java.home}/bin/javadoc</javadocExecutable>
 					<links>
 						<link>https://javadoc.io/doc/javax.websocket/javax.websocket-api/1.1</link>
+						<link>https://javadoc.io/doc/jakarta.websocket/jakarta.websocket-api/2.0.0</link>
 					</links>
 				</configuration>
 				<executions>
@@ -130,4 +125,35 @@
 			</plugin>
 		</plugins>
 	</build>
+
+	<profiles>
+		<profile>
+			<id>javax</id>
+			<activation>
+				<activeByDefault>true</activeByDefault><!--jakarta:<activeByDefault>false</activeByDefault>-->
+			</activation>
+			<dependencies>
+				<dependency>
+					<groupId>javax.websocket</groupId>
+					<artifactId>javax.websocket-api</artifactId>
+					<version>1.1</version>
+					<scope>provided</scope>
+				</dependency>
+			</dependencies>
+		</profile>
+		<profile>
+			<id>jakarta</id>
+			<activation>
+				<activeByDefault>false</activeByDefault><!--jakarta:<activeByDefault>true</activeByDefault>-->
+			</activation>
+			<dependencies>
+				<dependency>
+					<groupId>jakarta.websocket</groupId>
+					<artifactId>jakarta.websocket-api</artifactId>
+					<version>2.0.0</version>
+					<scope>provided</scope>
+				</dependency>
+			</dependencies>
+		</profile>
+	</profiles>
 </project>
