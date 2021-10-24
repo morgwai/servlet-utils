@@ -47,7 +47,7 @@ public class WebsocketPingerService {
 	public static final int DEFAULT_MAX_MALFORMED_PONG_COUNT = 5;
 	final int maxMalformedPongCount;
 
-	final Thread pingingThread = new Thread(() -> pingConnectionsPeriodically());
+	final Thread pingingThread = new Thread(this::pingConnectionsPeriodically);
 
 	final ConcurrentMap<Session, PingPongPlayer> connections = new ConcurrentHashMap<>();
 
@@ -111,7 +111,7 @@ public class WebsocketPingerService {
 			try {
 				Thread.sleep(pingIntervalSeconds * 1000l);
 				for (PingPongPlayer player: connections.values()) player.ping();
-			} catch (InterruptedException e) {
+			} catch (InterruptedException ignored) {
 				return;  // stop() was called
 			}
 		}
@@ -138,7 +138,7 @@ public class WebsocketPingerService {
 		try {
 			pingingThread.join();
 			log.info("pinger stopped");
-		} catch (InterruptedException e) {}
+		} catch (InterruptedException ignored) {}
 		return connections;
 	}
 
@@ -174,7 +174,7 @@ public class WebsocketPingerService {
 				wrapper = ByteBuffer.wrap(pingData);
 				try {
 					connection.getAsyncRemote().sendPing(wrapper);
-				} catch (IllegalArgumentException | IOException e1) {
+				} catch (IllegalArgumentException | IOException ignored) {
 					// connection was closed in a meantime
 				}
 				wrapper.rewind();
@@ -195,7 +195,7 @@ public class WebsocketPingerService {
 					try {
 						connection.close(new CloseReason(
 								CloseCodes.PROTOCOL_ERROR, "malformed pong count exceeded"));
-					} catch (IOException e) {}
+					} catch (IOException ignored) {}
 				}
 			} else {
 				malformedCount = 0;
