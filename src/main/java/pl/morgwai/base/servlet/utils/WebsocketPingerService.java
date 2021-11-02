@@ -21,11 +21,10 @@ import org.slf4j.LoggerFactory;
 /**
  * Automatically pings and handles pongs from websocket connections.
  * <p>
- * Initial instances are usually created at app startup and stored in a location easily reachable
- * for endpoint instances (for example on static var in app's ServletContextListener). Additional
- * instances may be added later if number of connections is too big to handle for the existing ones.
- * </p>
- * <p>Endpoint instances should register themselves for pinging in their
+ * Instances are usually created at app startup and stored in a location easily reachable
+ * for endpoint instances (for example on static var in app's ServletContextListener).</p>
+ * <p>
+ * Endpoint instances should register themselves for pinging in their
  * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig)} method using
  * {@link #addConnection(Session)} and deregister in
  * {@link javax.websocket.Endpoint#onClose(Session, CloseReason)} using
