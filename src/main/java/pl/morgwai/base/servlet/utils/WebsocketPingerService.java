@@ -7,11 +7,11 @@ import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-import javax.websocket.CloseReason;
-import javax.websocket.CloseReason.CloseCodes;
-import javax.websocket.MessageHandler;
-import javax.websocket.PongMessage;
-import javax.websocket.Session;
+import jakarta.websocket.CloseReason;
+import jakarta.websocket.CloseReason.CloseCodes;
+import jakarta.websocket.MessageHandler;
+import jakarta.websocket.PongMessage;
+import jakarta.websocket.Session;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,9 +25,9 @@ import org.slf4j.LoggerFactory;
  * for endpoint instances (for example on static var in app's ServletContextListener).</p>
  * <p>
  * Endpoint instances should register themselves for pinging in their
- * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig)} method using
+ * {@link jakarta.websocket.Endpoint#onOpen(Session, jakarta.websocket.EndpointConfig)} method using
  * {@link #addConnection(Session)} and deregister in
- * {@link javax.websocket.Endpoint#onClose(Session, CloseReason)} using
+ * {@link jakarta.websocket.Endpoint#onClose(Session, CloseReason)} using
  * {@link #removeConnection(Session)}.</p>
  */
 public class WebsocketPingerService {
@@ -82,7 +82,7 @@ public class WebsocketPingerService {
 
 	/**
 	 * Registers {@code connection} for pinging. Usually called in
-	 * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig)}.
+	 * {@link jakarta.websocket.Endpoint#onOpen(Session, jakarta.websocket.EndpointConfig)}.
 	 */
 	public void addConnection(Session connection) {
 		PingPongPlayer player = new PingPongPlayer(connection, maxMalformedPongCount);
@@ -94,7 +94,7 @@ public class WebsocketPingerService {
 
 	/**
 	 * Deregisters {@code connection}. Usually called in
-	 * {@link javax.websocket.Endpoint#onClose(Session, CloseReason)}.
+	 * {@link jakarta.websocket.Endpoint#onClose(Session, CloseReason)}.
 	 */
 	public void removeConnection(Session connection) {
 		connections.remove(connection);
