@@ -119,6 +119,17 @@
 						<link>https://javadoc.io/doc/javax.websocket/javax.websocket-api/1.1</link>
 						<link>https://javadoc.io/doc/jakarta.websocket/jakarta.websocket-api/2.0.0</link>
 					</links>
+					<offlineLinks>
+						<!-- to setup offline javadoc generation run ./setup-offline-javadocs.sh -->
+						<offlineLink>
+							<url>https://javadoc.io/doc/javax.websocket/javax.websocket-api/1.1</url>
+							<location>${settings.localRepository}/javax/websocket/javax.websocket-api/1.1</location>
+						</offlineLink>
+						<offlineLink>
+							<url>https://javadoc.io/doc/jakarta.websocket/jakarta.websocket-api/2.0.0</url>
+							<location>${settings.localRepository}/jakarta/websocket/jakarta.websocket-api/2.0.0</location>
+						</offlineLink>
+					</offlineLinks>
 				</configuration>
 				<executions>
 					<execution>
