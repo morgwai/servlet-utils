@@ -50,6 +50,8 @@ public class WebsocketPingerService {
 
 	final ConcurrentMap<Session, PingPongPlayer> connections = new ConcurrentHashMap<>();
 
+	final boolean synchronizePingSending;
+
 
 
 	/**
@@ -58,10 +60,16 @@ public class WebsocketPingerService {
 	 * @param maxMalformedPongCount limit after which a given connection is closed. Each valid,
 	 *     timely pong resets connection's counter. Pongs received after {@code pingIntervalSeconds}
 	 *     count as malformed.
+	 * @param synchronizePingSending whether to synchronize ping sending on the given connection.
+	 *     Whether it is necessary depends on the implementation of the container. For example it is
+	 *     not necessary on Jetty, but it is on Tomcat: see
+	 *     <a href='https://bz.apache.org/bugzilla/show_bug.cgi?id=56026'>this bug report</a>.
 	 */
-	public WebsocketPingerService(int pingIntervalSeconds, int maxMalformedPongCount) {
+	public WebsocketPingerService(
+			int pingIntervalSeconds, int maxMalformedPongCount, boolean synchronizePingSending) {
 		this.pingIntervalSeconds = pingIntervalSeconds;
 		this.maxMalformedPongCount = maxMalformedPongCount;
+		this.synchronizePingSending = synchronizePingSending;
 		pingingThread.start();
 		if (log.isInfoEnabled()) log.info("websockets will be pinged every " + pingIntervalSeconds
 				+ "s,  malformed pong limit: " + maxMalformedPongCount);
@@ -70,12 +78,22 @@ public class WebsocketPingerService {
 
 
 	/**
-	 * Calls {@link #WebsocketPingerService(int, int)
+	 * Calls {@link #WebsocketPingerService(int, int, boolean)
+	 * WebsocketPingerService}(pingIntervalSeconds, maxMalformedPongCount, false).
+	 */
+	public WebsocketPingerService(int pingIntervalSeconds, int maxMalformedPongCount) {
+		this(pingIntervalSeconds, maxMalformedPongCount, false);
+	}
+
+
+
+	/**
+	 * Calls {@link #WebsocketPingerService(int, int, boolean)
 	 * WebsocketPingerService}({@link #DEFAULT_PING_INTERVAL},
-	 * {@link #DEFAULT_MAX_MALFORMED_PONG_COUNT}).
+	 * {@link #DEFAULT_MAX_MALFORMED_PONG_COUNT}, false).
 	 */
 	public WebsocketPingerService() {
-		this(DEFAULT_PING_INTERVAL, DEFAULT_MAX_MALFORMED_PONG_COUNT);
+		this(DEFAULT_PING_INTERVAL, DEFAULT_MAX_MALFORMED_PONG_COUNT, false);
 	}
 
 
@@ -85,7 +103,8 @@ public class WebsocketPingerService {
 	 * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig)}.
 	 */
 	public void addConnection(Session connection) {
-		PingPongPlayer player = new PingPongPlayer(connection, maxMalformedPongCount);
+		PingPongPlayer player =
+				new PingPongPlayer(connection, maxMalformedPongCount, synchronizePingSending);
 		connection.addMessageHandler(PongMessage.class, player);
 		connections.put(connection, player);
 	}
@@ -150,10 +169,15 @@ public class WebsocketPingerService {
 
 		final Session connection;
 		final int maxMalformedPongCount;
+		final boolean synchronizePingSending;
 
-		PingPongPlayer(Session connection, int maxMalformedPongCount) {
+
+
+		PingPongPlayer(
+				Session connection, int maxMalformedPongCount, boolean synchronizePingSending) {
 			this.connection = connection;
 			this.maxMalformedPongCount = maxMalformedPongCount;
+			this.synchronizePingSending = synchronizePingSending;
 		}
 
 
@@ -172,7 +196,13 @@ public class WebsocketPingerService {
 				pingData = newPingData;
 				wrapper = ByteBuffer.wrap(pingData);
 				try {
-					connection.getAsyncRemote().sendPing(wrapper);
+					if (synchronizePingSending) {
+						synchronized (connection) {
+							connection.getAsyncRemote().sendPing(wrapper);
+						}
+					} else {
+						connection.getAsyncRemote().sendPing(wrapper);
+					}
 				} catch (IllegalArgumentException | IOException ignored) {
 					// connection was closed in a meantime
 				}
