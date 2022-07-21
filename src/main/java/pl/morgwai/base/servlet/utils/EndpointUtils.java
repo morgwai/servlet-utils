@@ -3,13 +3,7 @@ package pl.morgwai.base.servlet.utils;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 
-import javax.websocket.CloseReason;
-import javax.websocket.Endpoint;
-import javax.websocket.EndpointConfig;
-import javax.websocket.OnClose;
-import javax.websocket.OnError;
-import javax.websocket.OnOpen;
-import javax.websocket.Session;
+import javax.websocket.*;
 
 
 
