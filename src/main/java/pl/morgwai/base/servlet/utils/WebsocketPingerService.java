@@ -124,8 +124,10 @@ public class WebsocketPingerService {
 	private void pingConnectionsPeriodically() {
 		while (true) {
 			try {
-				Thread.sleep(pingIntervalSeconds * 1000l);
+				var startMillis = System.currentTimeMillis();
 				for (PingPongPlayer player: connections.values()) player.ping();
+				Thread.sleep(Math.max(0l,
+						pingIntervalSeconds * 1000l - System.currentTimeMillis() + startMillis));
 			} catch (InterruptedException ignored) {
 				return;  // stop() was called
 			}
