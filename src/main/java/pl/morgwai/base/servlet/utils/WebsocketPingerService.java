@@ -113,6 +113,7 @@ public class WebsocketPingerService {
 	 * {@link javax.websocket.Endpoint#onClose(Session, CloseReason)}.
 	 */
 	public void removeConnection(Session connection) {
+		connection.removeMessageHandler(connections.get(connection));
 		connections.remove(connection);
 	}
 
