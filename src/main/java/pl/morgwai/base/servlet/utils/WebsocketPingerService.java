@@ -4,6 +4,7 @@ package pl.morgwai.base.servlet.utils;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -151,13 +152,16 @@ public class WebsocketPingerService {
 	 * should be discarded.
 	 * @return remaining registered connections.
 	 */
-	public ConcurrentMap<Session, PingPongPlayer> stop() {
+	public Set<Session> stop() {
 		pingingThread.interrupt();
 		try {
 			pingingThread.join();
 			log.info("pinger stopped");
 		} catch (InterruptedException ignored) {}
-		return connections;
+		for (var entry: connections.entrySet()) {
+			entry.getKey().removeMessageHandler(entry.getValue());
+		}
+		return connections.keySet();
 	}
 
 
