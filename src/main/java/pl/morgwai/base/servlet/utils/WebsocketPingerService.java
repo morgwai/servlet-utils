@@ -79,6 +79,7 @@ public class WebsocketPingerService {
 		int pingSize,
 		boolean synchronizePingSending
 	) {
+		if (pingSize > 125) throw new IllegalArgumentException("ping size cannot exceed 125B");
 		this.pingIntervalSeconds = pingIntervalSeconds;
 		this.maxMalformedPongCount = maxMalformedPongCount;
 		this.pingSize = pingSize;
@@ -232,9 +233,7 @@ public class WebsocketPingerService {
 				} else {
 					connection.getAsyncRemote().sendPing(wrapper);
 				}
-			} catch (IllegalArgumentException | IOException ignored) {
-				// connection was closed in a meantime
-			}
+			} catch (IOException ignored) {}  // connection was closed in a meantime
 			wrapper.rewind();
 		}
 
