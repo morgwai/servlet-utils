@@ -50,11 +50,13 @@ public class WebsocketPingerService {
 	public static final int DEFAULT_PING_SIZE = 4;
 	final int pingSize;
 
+	final boolean synchronizePingSending;
+
 	final Thread pingingThread = new Thread(this::pingConnectionsPeriodically);
 
 	final ConcurrentMap<Session, PingPongPlayer> connections = new ConcurrentHashMap<>();
 
-	final boolean synchronizePingSending;
+	final Random random = new Random();
 
 
 
@@ -155,7 +157,9 @@ public class WebsocketPingerService {
 		while (true) {
 			try {
 				var startMillis = System.currentTimeMillis();
-				for (PingPongPlayer player: connections.values()) player.ping();
+				byte[] pingData = new byte[pingSize];
+				random.nextBytes(pingData);
+				for (PingPongPlayer player: connections.values()) player.ping(pingData);
 				Thread.sleep(Math.max(0l,
 						pingIntervalSeconds * 1000l - System.currentTimeMillis() + startMillis));
 			} catch (InterruptedException ignored) {
@@ -214,29 +218,24 @@ public class WebsocketPingerService {
 		int malformedCount = 0;
 		byte[] pingData = new byte[1];  // to not crash on some random pong before 1st ping
 		ByteBuffer wrapper = ByteBuffer.wrap(this.pingData);
-		final Random random = new Random();
 
 
 
-		void ping() {
-			byte[] newPingData = new byte[pingSize];
-			random.nextBytes(newPingData);
-			synchronized (this) {
-				pingData = newPingData;
-				wrapper = ByteBuffer.wrap(pingData);
-				try {
-					if (synchronizePingSending) {
-						synchronized (connection) {
-							connection.getAsyncRemote().sendPing(wrapper);
-						}
-					} else {
+		synchronized void ping(byte[] pingData) {
+			this.pingData = pingData;
+			wrapper = ByteBuffer.wrap(this.pingData);
+			try {
+				if (synchronizePingSending) {
+					synchronized (connection) {
 						connection.getAsyncRemote().sendPing(wrapper);
 					}
-				} catch (IllegalArgumentException | IOException ignored) {
-					// connection was closed in a meantime
+				} else {
+					connection.getAsyncRemote().sendPing(wrapper);
 				}
-				wrapper.rewind();
+			} catch (IllegalArgumentException | IOException ignored) {
+				// connection was closed in a meantime
 			}
+			wrapper.rewind();
 		}
 
 
