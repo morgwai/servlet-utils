@@ -85,8 +85,11 @@ public class WebsocketPingerService {
 		this.pingSize = pingSize;
 		this.synchronizePingSending = synchronizePingSending;
 		pingingThread.start();
-		if (log.isInfoEnabled()) log.info("websockets will be pinged every " + pingIntervalSeconds
-				+ "s,  malformed pong limit: " + maxMalformedPongCount);
+		if (log.isInfoEnabled()) {
+			log.info("websockets will be pinged every " + pingIntervalSeconds
+				+ "s,  malformed pong limit: " + maxMalformedPongCount + ", ping size: "
+				+ pingSize + "B, synchronize ping sending: " + synchronizePingSending);
+		}
 	}
 
 	/**
