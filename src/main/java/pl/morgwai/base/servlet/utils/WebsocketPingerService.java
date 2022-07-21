@@ -140,6 +140,15 @@ public class WebsocketPingerService {
 
 
 	/**
+	 * Returns the number of currently registered connections.
+	 */
+	public int getNumberOfConnections() {
+		return connections.size();
+	}
+
+
+
+	/**
 	 * For {@link #pingingThread}.
 	 */
 	private void pingConnectionsPeriodically() {
@@ -153,15 +162,6 @@ public class WebsocketPingerService {
 				return;  // stop() was called
 			}
 		}
-	}
-
-
-
-	/**
-	 * Returns the number of currently registered connections.
-	 */
-	public int getConnectionsSize() {
-		return connections.size();
 	}
 
 
