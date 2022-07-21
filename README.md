@@ -2,11 +2,11 @@
 
 Some helpful classes when developing servlets.<br/>
 <br/>
-**latest release: 1.4**<br/>
-[javax flavor](https://search.maven.org/artifact/pl.morgwai.base/servlet-utils/1.4-javax/jar)
-([javadoc](https://javadoc.io/doc/pl.morgwai.base/servlet-utils/1.4-javax))<br/>
-[jakarta flavor](https://search.maven.org/artifact/pl.morgwai.base/servlet-utils/1.4-jakarta/jar)
-([javadoc](https://javadoc.io/doc/pl.morgwai.base/servlet-utils/1.4-jakarta))
+**latest release: 2.0**<br/>
+[javax flavor](https://search.maven.org/artifact/pl.morgwai.base/servlet-utils/2.0-javax/jar)
+([javadoc](https://javadoc.io/doc/pl.morgwai.base/servlet-utils/2.0-javax))<br/>
+[jakarta flavor](https://search.maven.org/artifact/pl.morgwai.base/servlet-utils/2.0-jakarta/jar)
+([javadoc](https://javadoc.io/doc/pl.morgwai.base/servlet-utils/2.0-jakarta))
 
 
 ## MAIN USER CLASSES
