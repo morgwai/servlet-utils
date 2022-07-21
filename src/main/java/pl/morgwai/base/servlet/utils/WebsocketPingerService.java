@@ -127,7 +127,7 @@ public class WebsocketPingerService {
 	 */
 	public void addConnection(Session connection) {
 		PingPongPlayer player = new PingPongPlayer(
-				connection, maxMalformedPongCount, pingSize, synchronizePingSending);
+				connection, maxMalformedPongCount, synchronizePingSending);
 		connection.addMessageHandler(PongMessage.class, player);
 		connections.put(connection, player);
 	}
@@ -200,7 +200,6 @@ public class WebsocketPingerService {
 
 		final Session connection;
 		final int maxMalformedPongCount;
-		final int pingSize;
 		final boolean synchronizePingSending;
 
 
@@ -208,12 +207,10 @@ public class WebsocketPingerService {
 		PingPongPlayer(
 			Session connection,
 			int maxMalformedPongCount,
-			int pingSize,
 			boolean synchronizePingSending
 		) {
 			this.connection = connection;
 			this.maxMalformedPongCount = maxMalformedPongCount;
-			this.pingSize = pingSize;
 			this.synchronizePingSending = synchronizePingSending;
 		}
 
