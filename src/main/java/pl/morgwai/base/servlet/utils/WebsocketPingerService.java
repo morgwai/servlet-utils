@@ -209,12 +209,18 @@ public class WebsocketPingerService {
 
 
 		int failureCount = 0;
+		boolean awaitingPong = false;
 		byte[] pingData = new byte[1];  // to not crash on some random pong before 1st ping
 		ByteBuffer wrapper = ByteBuffer.wrap(this.pingData);
 
 
 
 		synchronized void ping(byte[] pingData) {
+			if (awaitingPong) failureCount++;
+			if (failureCount > failureLimit) {
+				closeFailedConnection(connection);
+				return;
+			}
 			this.pingData = pingData;
 			wrapper = ByteBuffer.wrap(this.pingData);
 			try {
@@ -225,6 +231,7 @@ public class WebsocketPingerService {
 				} else {
 					connection.getAsyncRemote().sendPing(wrapper);
 				}
+				awaitingPong = true;
 			} catch (IOException ignored) {}  // connection was closed in a meantime
 			wrapper.rewind();
 		}
@@ -233,21 +240,26 @@ public class WebsocketPingerService {
 
 		@Override
 		public synchronized void onMessage(PongMessage pong) {
-			if ( ! pong.getApplicationData().equals(wrapper)) {
-				failureCount++;
-				if (failureCount > failureLimit) {
-					if (log.isInfoEnabled()) {
-						log.info("malformed pong count from " + connection.getId()
-								+ " exceeded, closing connection");
-					}
-					try {
-						connection.close(new CloseReason(
-								CloseCodes.PROTOCOL_ERROR, "malformed pong count exceeded"));
-					} catch (IOException ignored) {}
-				}
-			} else {
+			awaitingPong = false;
+			if (pong.getApplicationData().equals(wrapper)) {
 				failureCount = 0;
+			} else {
+				failureCount++;
+				if (failureCount > failureLimit) closeFailedConnection(connection);
 			}
+		}
+
+
+
+		void closeFailedConnection(Session connection) {
+			if (log.isDebugEnabled()) {
+				log.debug("failure limit from " + connection.getId()
+						+ " exceeded, closing connection");
+			}
+			try {
+				connection.close(new CloseReason(
+						CloseCodes.PROTOCOL_ERROR, "ping failure limit exceeded"));
+			} catch (IOException ignored) {}
 		}
 	}
 
