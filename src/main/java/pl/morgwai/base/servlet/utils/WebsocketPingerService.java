@@ -52,7 +52,9 @@ public class WebsocketPingerService {
 
 	final boolean synchronizeSending;
 
-	final Thread pingingThread = new Thread(this::pingConnectionsPeriodically);
+	final boolean keepAliveOnly;
+
+	final Thread pingingThread;
 
 	final ConcurrentMap<Session, PingPongPlayer> connections = new ConcurrentHashMap<>();
 
@@ -60,8 +62,41 @@ public class WebsocketPingerService {
 
 
 
+	private WebsocketPingerService(
+		boolean keepAliveOnly,
+		int intervalSeconds,
+		int failureLimit,
+		int pingSize,
+		boolean synchronizeSending
+	) {
+		if (pingSize > 125 || pingSize < 1) {
+			throw new IllegalArgumentException("ping size must be between 1 and 125");
+		}
+		if ( ( ! keepAliveOnly) && failureLimit < 0) {
+			throw new IllegalArgumentException("failure limit cannot be negative");
+		}
+		this.keepAliveOnly = keepAliveOnly;
+		this.intervalSeconds = intervalSeconds;
+		this.failureLimit = failureLimit;
+		this.pingSize = pingSize;
+		this.synchronizeSending = synchronizeSending;
+		if (keepAliveOnly) {
+			pingingThread = new Thread(this::sendKeepAlivePeriodically);
+		} else {
+			pingingThread = new Thread(this::pingConnectionsPeriodically);
+		}
+		pingingThread.start();
+		if (log.isInfoEnabled()) {
+			log.info("websockets will be pinged every " + intervalSeconds
+					+ "s,  failure limit: " + failureLimit + ", ping size: "
+					+ pingSize + "B, synchronize ping sending: " + synchronizeSending);
+		}
+	}
+
+
+
 	/**
-	 * Configures and starts the service.
+	 * Configures and starts the service in the standard ping-pong mode.
 	 * @param intervalSeconds interval between pings.
 	 * @param failureLimit limit of lost or malformed pongs after which the given connection is
 	 *     closed. Pongs received after {@code pingIntervalSeconds} count as failures. Each valid,
@@ -74,23 +109,13 @@ public class WebsocketPingerService {
 	 *     <a href='https://bz.apache.org/bugzilla/show_bug.cgi?id=56026'>this bug report</a>.
 	 */
 	public WebsocketPingerService(
-		int intervalSeconds, int failureLimit, int pingSize, boolean synchronizeSending) {
-		if (pingSize > 125) throw new IllegalArgumentException("ping size cannot exceed 125B");
-		this.intervalSeconds = intervalSeconds;
-		this.failureLimit = failureLimit;
-		this.pingSize = pingSize;
-		this.synchronizeSending = synchronizeSending;
-		pingingThread.start();
-		if (log.isInfoEnabled()) {
-			log.info("websockets will be pinged every " + intervalSeconds
-				+ "s,  failure limit: " + failureLimit + ", ping size: "
-				+ pingSize + "B, synchronize ping sending: " + synchronizeSending);
-		}
+			int intervalSeconds, int failureLimit, int pingSize, boolean synchronizeSending) {
+		this(false, intervalSeconds, failureLimit, pingSize, synchronizeSending);
 	}
 
 	/**
 	 * Calls {@link #WebsocketPingerService(int, int, int, boolean)
-	 * WebsocketPingerService(pingIntervalSeconds, maxMalformedPongCount, pingSize, false)}.
+	 * WebsocketPingerService(intervalSeconds, failureLimit, pingSize, false)} (ping-pong mode).
 	 */
 	public WebsocketPingerService(int intervalSeconds, int failureLimit, int pingSize)
 	{
@@ -99,20 +124,30 @@ public class WebsocketPingerService {
 
 	/**
 	 * Calls {@link #WebsocketPingerService(int, int, int, boolean)
-	 * WebsocketPingerService}<code>(pingIntervalSeconds, maxMalformedPongCount,
-	 * {@link #DEFAULT_PING_SIZE}, false)</code>.
-	 */
-	public WebsocketPingerService(int intervalSeconds, int failureLimit) {
-		this(intervalSeconds, failureLimit, DEFAULT_PING_SIZE, false);
-	}
-
-	/**
-	 * Calls {@link #WebsocketPingerService(int, int, int, boolean)
 	 * WebsocketPingerService}<code>({@link #DEFAULT_INTERVAL},
-	 * {@link #DEFAULT_FAILURE_LIMIT}, {@link #DEFAULT_PING_SIZE}, false)</code>.
+	 * {@link #DEFAULT_FAILURE_LIMIT}, {@link #DEFAULT_PING_SIZE}, false)</code> (ping-pong mode).
 	 */
 	public WebsocketPingerService() {
 		this(DEFAULT_INTERVAL, DEFAULT_FAILURE_LIMIT, DEFAULT_PING_SIZE, false);
+	}
+
+
+
+	/**
+	 * Configures and starts the service in keep-alive-only mode: failures are not counted.
+	 * See {@link #WebsocketPingerService(int, int, int, boolean)} for param descriptions.
+	 */
+	public WebsocketPingerService(int intervalSeconds, boolean synchronizeSending) {
+		this(true, intervalSeconds, -1, 1, synchronizeSending);
+	}
+
+	/**
+	 * Calls {@link #WebsocketPingerService(int, boolean)
+	 * WebsocketPingerService}<code>(intervalSeconds, false)</code>
+	 * (keep-alive-only mode).
+	 */
+	public WebsocketPingerService(int intervalSeconds) {
+		this(intervalSeconds, false);
 	}
 
 
@@ -122,9 +157,11 @@ public class WebsocketPingerService {
 	 * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig)}.
 	 */
 	public void addConnection(Session connection) {
-		PingPongPlayer player = new PingPongPlayer(
-				connection, failureLimit, synchronizeSending);
-		connection.addMessageHandler(PongMessage.class, player);
+		// ConcurrentHashMap doesn't allow null values so player needs to be created in both modes
+		PingPongPlayer player = new PingPongPlayer(connection, failureLimit, synchronizeSending);
+		if ( ! keepAliveOnly) {
+			connection.addMessageHandler(PongMessage.class, player);
+		}
 		connections.put(connection, player);
 	}
 
@@ -135,7 +172,7 @@ public class WebsocketPingerService {
 	 * {@link javax.websocket.Endpoint#onClose(Session, CloseReason)}.
 	 */
 	public void removeConnection(Session connection) {
-		connection.removeMessageHandler(connections.get(connection));
+		if ( ! keepAliveOnly) connection.removeMessageHandler(connections.get(connection));
 		connections.remove(connection);
 	}
 
@@ -146,6 +183,38 @@ public class WebsocketPingerService {
 	 */
 	public int getNumberOfConnections() {
 		return connections.size();
+	}
+
+
+
+	/**
+	 * For {@link #pingingThread}.
+	 */
+	private void sendKeepAlivePeriodically() {
+		var pingData = new byte[1];
+		pingData[0] = (byte) 69;  // arbitrarily chosen byte ;-)
+		var wrapper = ByteBuffer.wrap(pingData);
+		while (true) {
+			try {
+				var startMillis = System.currentTimeMillis();
+				for (var connection: connections.keySet()) {
+					try {
+						if (synchronizeSending) {
+							synchronized (connection) {
+								connection.getAsyncRemote().sendPong(wrapper);
+							}
+						} else {
+							connection.getAsyncRemote().sendPong(wrapper);
+						}
+					} catch (IOException ignored) {}  // connection was closed in a meantime
+					wrapper.rewind();
+				}
+				Thread.sleep(Math.max(0l,
+						intervalSeconds * 1000l - System.currentTimeMillis() + startMillis));
+			} catch (InterruptedException ignored) {
+				return;  // stop() was called
+			}
+		}
 	}
 
 
