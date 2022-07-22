@@ -35,14 +35,14 @@ public class WebsocketPingerService {
 	/**
 	 * Majority of proxy and NAT routers have timeout of at least 60s.
 	 */
-	public static final int DEFAULT_PING_INTERVAL = 55;
-	final int pingIntervalSeconds;
+	public static final int DEFAULT_INTERVAL = 55;
+	final int intervalSeconds;
 
 	/**
 	 * Arbitrarily chosen number.
 	 */
-	public static final int DEFAULT_MAX_MALFORMED_PONG_COUNT = 5;
-	final int maxMalformedPongCount;
+	public static final int DEFAULT_FAILURE_LIMIT = 4;
+	final int failureLimit;
 
 	/**
 	 * Economic value to reduce use of {@link Random}.
@@ -50,7 +50,7 @@ public class WebsocketPingerService {
 	public static final int DEFAULT_PING_SIZE = 4;
 	final int pingSize;
 
-	final boolean synchronizePingSending;
+	final boolean synchronizeSending;
 
 	final Thread pingingThread = new Thread(this::pingConnectionsPeriodically);
 
@@ -62,33 +62,29 @@ public class WebsocketPingerService {
 
 	/**
 	 * Configures and starts the service.
-	 * @param pingIntervalSeconds how often to ping all connections.
-	 * @param maxMalformedPongCount limit after which a given connection is closed. Each valid,
-	 *     timely pong resets connection's counter. Pongs received after {@code pingIntervalSeconds}
-	 *     count as malformed.
+	 * @param intervalSeconds interval between pings.
+	 * @param failureLimit limit of lost or malformed pongs after which the given connection is
+	 *     closed. Pongs received after {@code pingIntervalSeconds} count as failures. Each valid,
+	 *     timely pong resets connection's failure counter.
 	 * @param pingSize size of the ping data to send. This comes from {@link Random}, so an economic
 	 *     value is recommended.
-	 * @param synchronizePingSending whether to synchronize ping sending on the given connection.
+	 * @param synchronizeSending whether to synchronize ping sending on the given connection.
 	 *     Whether it is necessary depends on the implementation of the container. For example it is
 	 *     not necessary on Jetty, but it is on Tomcat: see
 	 *     <a href='https://bz.apache.org/bugzilla/show_bug.cgi?id=56026'>this bug report</a>.
 	 */
 	public WebsocketPingerService(
-		int pingIntervalSeconds,
-		int maxMalformedPongCount,
-		int pingSize,
-		boolean synchronizePingSending
-	) {
+		int intervalSeconds, int failureLimit, int pingSize, boolean synchronizeSending) {
 		if (pingSize > 125) throw new IllegalArgumentException("ping size cannot exceed 125B");
-		this.pingIntervalSeconds = pingIntervalSeconds;
-		this.maxMalformedPongCount = maxMalformedPongCount;
+		this.intervalSeconds = intervalSeconds;
+		this.failureLimit = failureLimit;
 		this.pingSize = pingSize;
-		this.synchronizePingSending = synchronizePingSending;
+		this.synchronizeSending = synchronizeSending;
 		pingingThread.start();
 		if (log.isInfoEnabled()) {
-			log.info("websockets will be pinged every " + pingIntervalSeconds
-				+ "s,  malformed pong limit: " + maxMalformedPongCount + ", ping size: "
-				+ pingSize + "B, synchronize ping sending: " + synchronizePingSending);
+			log.info("websockets will be pinged every " + intervalSeconds
+				+ "s,  failure limit: " + failureLimit + ", ping size: "
+				+ pingSize + "B, synchronize ping sending: " + synchronizeSending);
 		}
 	}
 
@@ -96,9 +92,9 @@ public class WebsocketPingerService {
 	 * Calls {@link #WebsocketPingerService(int, int, int, boolean)
 	 * WebsocketPingerService(pingIntervalSeconds, maxMalformedPongCount, pingSize, false)}.
 	 */
-	public WebsocketPingerService(int pingIntervalSeconds, int maxMalformedPongCount, int pingSize)
+	public WebsocketPingerService(int intervalSeconds, int failureLimit, int pingSize)
 	{
-		this(pingIntervalSeconds, maxMalformedPongCount, pingSize, false);
+		this(intervalSeconds, failureLimit, pingSize, false);
 	}
 
 	/**
@@ -106,17 +102,17 @@ public class WebsocketPingerService {
 	 * WebsocketPingerService}<code>(pingIntervalSeconds, maxMalformedPongCount,
 	 * {@link #DEFAULT_PING_SIZE}, false)</code>.
 	 */
-	public WebsocketPingerService(int pingIntervalSeconds, int maxMalformedPongCount) {
-		this(pingIntervalSeconds, maxMalformedPongCount, DEFAULT_PING_SIZE, false);
+	public WebsocketPingerService(int intervalSeconds, int failureLimit) {
+		this(intervalSeconds, failureLimit, DEFAULT_PING_SIZE, false);
 	}
 
 	/**
 	 * Calls {@link #WebsocketPingerService(int, int, int, boolean)
-	 * WebsocketPingerService}<code>({@link #DEFAULT_PING_INTERVAL},
-	 * {@link #DEFAULT_MAX_MALFORMED_PONG_COUNT}, {@link #DEFAULT_PING_SIZE}, false)</code>.
+	 * WebsocketPingerService}<code>({@link #DEFAULT_INTERVAL},
+	 * {@link #DEFAULT_FAILURE_LIMIT}, {@link #DEFAULT_PING_SIZE}, false)</code>.
 	 */
 	public WebsocketPingerService() {
-		this(DEFAULT_PING_INTERVAL, DEFAULT_MAX_MALFORMED_PONG_COUNT, DEFAULT_PING_SIZE, false);
+		this(DEFAULT_INTERVAL, DEFAULT_FAILURE_LIMIT, DEFAULT_PING_SIZE, false);
 	}
 
 
@@ -127,7 +123,7 @@ public class WebsocketPingerService {
 	 */
 	public void addConnection(Session connection) {
 		PingPongPlayer player = new PingPongPlayer(
-				connection, maxMalformedPongCount, synchronizePingSending);
+				connection, failureLimit, synchronizeSending);
 		connection.addMessageHandler(PongMessage.class, player);
 		connections.put(connection, player);
 	}
@@ -165,7 +161,7 @@ public class WebsocketPingerService {
 				random.nextBytes(pingData);
 				for (PingPongPlayer player: connections.values()) player.ping(pingData);
 				Thread.sleep(Math.max(0l,
-						pingIntervalSeconds * 1000l - System.currentTimeMillis() + startMillis));
+						intervalSeconds * 1000l - System.currentTimeMillis() + startMillis));
 			} catch (InterruptedException ignored) {
 				return;  // stop() was called
 			}
@@ -199,24 +195,20 @@ public class WebsocketPingerService {
 	static class PingPongPlayer implements MessageHandler.Whole<PongMessage> {
 
 		final Session connection;
-		final int maxMalformedPongCount;
-		final boolean synchronizePingSending;
+		final int failureLimit;
+		final boolean synchronizeSending;
 
 
 
-		PingPongPlayer(
-			Session connection,
-			int maxMalformedPongCount,
-			boolean synchronizePingSending
-		) {
+		PingPongPlayer(Session connection, int failureLimit, boolean synchronizeSending) {
 			this.connection = connection;
-			this.maxMalformedPongCount = maxMalformedPongCount;
-			this.synchronizePingSending = synchronizePingSending;
+			this.failureLimit = failureLimit;
+			this.synchronizeSending = synchronizeSending;
 		}
 
 
 
-		int malformedCount = 0;
+		int failureCount = 0;
 		byte[] pingData = new byte[1];  // to not crash on some random pong before 1st ping
 		ByteBuffer wrapper = ByteBuffer.wrap(this.pingData);
 
@@ -226,7 +218,7 @@ public class WebsocketPingerService {
 			this.pingData = pingData;
 			wrapper = ByteBuffer.wrap(this.pingData);
 			try {
-				if (synchronizePingSending) {
+				if (synchronizeSending) {
 					synchronized (connection) {
 						connection.getAsyncRemote().sendPing(wrapper);
 					}
@@ -242,8 +234,8 @@ public class WebsocketPingerService {
 		@Override
 		public synchronized void onMessage(PongMessage pong) {
 			if ( ! pong.getApplicationData().equals(wrapper)) {
-				malformedCount++;
-				if (malformedCount >= maxMalformedPongCount) {
+				failureCount++;
+				if (failureCount > failureLimit) {
 					if (log.isInfoEnabled()) {
 						log.info("malformed pong count from " + connection.getId()
 								+ " exceeded, closing connection");
@@ -254,7 +246,7 @@ public class WebsocketPingerService {
 					} catch (IOException ignored) {}
 				}
 			} else {
-				malformedCount = 0;
+				failureCount = 0;
 			}
 		}
 	}
