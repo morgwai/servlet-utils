@@ -54,12 +54,21 @@ public class WebsocketPingerService {
 
 	final boolean keepAliveOnly;
 
-	final Thread pingingThread;
 
 
-
+	final Thread pingingThread = new Thread(this::pingAllConnectionsPeriodically);
 	final Random random = new Random();
-	final ConcurrentMap<Session, Optional<PingPongPlayer>> connections = new ConcurrentHashMap<>();
+	final ConcurrentMap<Session, ConnectionPinger> connections = new ConcurrentHashMap<>();
+
+
+
+	/**
+	 * Implemented by {@link LifeSupportProfessional} in {@link #keepAliveOnly} mode and by
+	 * {@link PingPongPlayer} in ping-pong mode.
+	 */
+	interface ConnectionPinger {
+		void pingConnection(byte[] pingData);
+	}
 
 
 
@@ -81,11 +90,6 @@ public class WebsocketPingerService {
 		this.failureLimit = failureLimit;
 		this.pingSize = pingSize;
 		this.synchronizeSending = synchronizeSending;
-		if (keepAliveOnly) {
-			pingingThread = new Thread(this::sendKeepAlivesPeriodically);
-		} else {
-			pingingThread = new Thread(this::sendPingsPeriodically);
-		}
 		pingingThread.start();
 		if (log.isInfoEnabled()) {
 			log.info("websockets will be pinged every " + intervalSeconds
@@ -156,15 +160,13 @@ public class WebsocketPingerService {
 	 * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig)}.
 	 */
 	public void addConnection(Session connection) {
-		// ConcurrentHashMap doesn't allow null values so we need Optional
-		Optional<PingPongPlayer> optionalPingPongPlayer;
+		ConnectionPinger pinger;
 		if (keepAliveOnly) {
-			optionalPingPongPlayer = Optional.empty();
+			pinger = new LifeSupportProfessional(connection, synchronizeSending);
 		} else {
-			optionalPingPongPlayer = Optional.of(
-					new PingPongPlayer(connection, failureLimit, synchronizeSending));
+			pinger = new PingPongPlayer(connection, failureLimit, synchronizeSending);
 		}
-		connections.put(connection, optionalPingPongPlayer);
+		connections.put(connection, pinger);
 	}
 
 
@@ -174,8 +176,8 @@ public class WebsocketPingerService {
 	 * {@link javax.websocket.Endpoint#onClose(Session, CloseReason)}.
 	 */
 	public void removeConnection(Session connection) {
-		var optionalPingPongPlayer =  connections.remove(connection);
-		if ( ! keepAliveOnly) optionalPingPongPlayer.get().deregister();
+		var pinger = connections.remove(connection);
+		if ( ! keepAliveOnly) ((PingPongPlayer) pinger).deregister();
 	}
 
 
@@ -192,47 +194,17 @@ public class WebsocketPingerService {
 	/**
 	 * For {@link #pingingThread}.
 	 */
-	private void sendKeepAlivesPeriodically() {
+	private void pingAllConnectionsPeriodically() {
 		var pingData = new byte[1];
 		pingData[0] = (byte) 69;  // arbitrarily chosen byte
-		var wrapper = ByteBuffer.wrap(pingData);
 		while (true) {
 			try {
 				var startMillis = System.currentTimeMillis();
-				for (var connection: connections.keySet()) {
-					try {
-						if (synchronizeSending) {
-							synchronized (connection) {
-								connection.getAsyncRemote().sendPong(wrapper);
-							}
-						} else {
-							connection.getAsyncRemote().sendPong(wrapper);
-						}
-					} catch (IOException ignored) {}  // connection was closed in a meantime
-					wrapper.rewind();
+				if ( ! keepAliveOnly) {
+					pingData = new byte[pingSize];
+					random.nextBytes(pingData);
 				}
-				Thread.sleep(Math.max(0l,
-						intervalSeconds * 1000l - System.currentTimeMillis() + startMillis));
-			} catch (InterruptedException e) {
-				return;  // stop() was called
-			}
-		}
-	}
-
-
-
-	/**
-	 * For {@link #pingingThread}.
-	 */
-	private void sendPingsPeriodically() {
-		while (true) {
-			try {
-				var startMillis = System.currentTimeMillis();
-				var pingData = new byte[pingSize];
-				random.nextBytes(pingData);
-				for (Optional<PingPongPlayer> pingPongPlayer: connections.values()) {
-					pingPongPlayer.get().pingConnection(pingData);
-				}
+				for (var pinger: connections.values()) pinger.pingConnection(pingData);
 				Thread.sleep(Math.max(0l,
 						intervalSeconds * 1000l - System.currentTimeMillis() + startMillis));
 			} catch (InterruptedException e) {
@@ -255,8 +227,8 @@ public class WebsocketPingerService {
 			log.info("pinger stopped");
 		} catch (InterruptedException ignored) {}
 		if ( ! keepAliveOnly) {
-			for (Optional<PingPongPlayer> pingPongPlayer: connections.values()) {
-				pingPongPlayer.get().deregister();
+			for (var pingPongPlayer: connections.values()) {
+				((PingPongPlayer) pingPongPlayer).deregister();
 			}
 		}
 		return connections.keySet();
@@ -265,9 +237,45 @@ public class WebsocketPingerService {
 
 
 	/**
+	 * Sends keep-alive packets to a single associated connection.
+	 */
+	static class LifeSupportProfessional implements ConnectionPinger {
+
+		final Session connection;
+		final Async connector;
+		final boolean synchronizeSending;
+
+
+
+		LifeSupportProfessional(Session connection, boolean synchronizeSending) {
+			this.connection = connection;
+			connector = connection.getAsyncRemote();
+			this.synchronizeSending = synchronizeSending;
+		}
+
+
+
+		@Override
+		public void pingConnection(byte[] pingData) {
+			var wrapper = ByteBuffer.wrap(pingData);
+			try {
+				if (synchronizeSending) {
+					synchronized (connection) {
+						connector.sendPong(wrapper);
+					}
+				} else {
+					connector.sendPong(wrapper);
+				}
+			} catch (IOException ignored) {}  // connection was closed in a meantime
+		}
+	}
+
+
+
+	/**
 	 * Plays ping-pong with a single associated connection.
 	 */
-	static class PingPongPlayer implements MessageHandler.Whole<PongMessage> {
+	static class PingPongPlayer implements ConnectionPinger, MessageHandler.Whole<PongMessage> {
 
 		final Session connection;
 		final Async connector;
@@ -292,7 +300,8 @@ public class WebsocketPingerService {
 
 
 
-		synchronized void pingConnection(byte[] pingData) {
+		@Override
+		public synchronized void pingConnection(byte[] pingData) {
 			if (awaitingPong) failureCount++;
 			if (failureCount > failureLimit) {
 				closeFailedConnection(connection);
