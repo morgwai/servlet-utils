@@ -214,7 +214,7 @@ public class WebsocketPingerService {
 			scheduler.awaitTermination(500l, TimeUnit.MILLISECONDS);
 		} catch (InterruptedException ignored) {}
 		if ( ! scheduler.isTerminated()) scheduler.shutdownNow();
-		log.info("pinger stopped");
+		log.info("websocket pinger service stopped");
 		return connections.keySet();
 	}
 
