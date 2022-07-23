@@ -4,8 +4,7 @@ package pl.morgwai.base.servlet.utils;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.*;
 
 import javax.websocket.*;
 import javax.websocket.CloseReason.CloseCodes;
@@ -58,7 +57,8 @@ public class WebsocketPingerService {
 
 
 
-	final Thread pingingThread = new Thread(this::pingAllConnectionsPeriodically);
+	final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+	final ScheduledFuture<?> pingingTask;
 	final Random random = new Random();
 	final ConcurrentMap<Session, PingPongPlayer> connections = new ConcurrentHashMap<>();
 
@@ -82,7 +82,8 @@ public class WebsocketPingerService {
 		this.failureLimit = failureLimit;
 		this.pingSize = pingSize;
 		this.synchronizeSending = synchronizeSending;
-		pingingThread.start();
+		pingingTask = scheduler.scheduleAtFixedRate(
+				this::pingAllConnections, 0l, intervalSeconds, TimeUnit.SECONDS);
 		if (log.isInfoEnabled()) {
 			log.info("websockets will be pinged every " + intervalSeconds
 					+ "s,  failure limit: " + failureLimit + ", ping size: "
@@ -184,24 +185,15 @@ public class WebsocketPingerService {
 
 
 	/**
-	 * For {@link #pingingThread}.
+	 * {@link #pingingTask}
 	 */
-	private void pingAllConnectionsPeriodically() {
-		while (true) {
-			try {
-				var startMillis = System.currentTimeMillis();
-				if (keepAliveOnly) {
-					for (var pinger: connections.values()) pinger.sendKeepAlive();
-				} else {
-					var pingData = new byte[pingSize];
-					random.nextBytes(pingData);
-					for (var pinger: connections.values()) pinger.pingConnection(pingData);
-				}
-				Thread.sleep(Math.max(0l,
-						intervalSeconds * 1000l - System.currentTimeMillis() + startMillis));
-			} catch (InterruptedException e) {
-				return;  // stop() was called
-			}
+	private void pingAllConnections() {
+		if (keepAliveOnly) {
+			for (var pinger: connections.values()) pinger.sendKeepAlive();
+		} else {
+			var pingData = new byte[pingSize];
+			random.nextBytes(pingData);
+			for (var pinger: connections.values()) pinger.pingConnection(pingData);
 		}
 	}
 
@@ -213,14 +205,16 @@ public class WebsocketPingerService {
 	 * @return remaining registered connections.
 	 */
 	public Set<Session> stop() {
-		pingingThread.interrupt();
-		try {
-			pingingThread.join();
-			log.info("pinger stopped");
-		} catch (InterruptedException ignored) {}
+		pingingTask.cancel(true);
+		scheduler.shutdown();
 		if ( ! keepAliveOnly) {
 			for (var pingPongPlayer: connections.values()) pingPongPlayer.deregister();
 		}
+		try {
+			scheduler.awaitTermination(500l, TimeUnit.MILLISECONDS);
+		} catch (InterruptedException ignored) {}
+		if ( ! scheduler.isTerminated()) scheduler.shutdownNow();
+		log.info("pinger stopped");
 		return connections.keySet();
 	}
 
