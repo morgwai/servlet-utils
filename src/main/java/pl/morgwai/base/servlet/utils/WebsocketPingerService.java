@@ -6,9 +6,9 @@ import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.*;
 
-import javax.websocket.*;
-import javax.websocket.CloseReason.CloseCodes;
-import javax.websocket.RemoteEndpoint.Async;
+import jakarta.websocket.*;
+import jakarta.websocket.CloseReason.CloseCodes;
+import jakarta.websocket.RemoteEndpoint.Async;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,9 +24,9 @@ import org.slf4j.LoggerFactory;
  * for endpoint instances (for example on static var in app's ServletContextListener).</p>
  * <p>
  * Endpoint instances should register themselves for pinging in their
- * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig)} method using
+ * {@link jakarta.websocket.Endpoint#onOpen(Session, jakarta.websocket.EndpointConfig)} method using
  * {@link #addConnection(Session)} and deregister in
- * {@link javax.websocket.Endpoint#onClose(Session, CloseReason)} using
+ * {@link jakarta.websocket.Endpoint#onClose(Session, CloseReason)} using
  * {@link #removeConnection(Session)}.</p>
  */
 public class WebsocketPingerService {
@@ -150,7 +150,7 @@ public class WebsocketPingerService {
 
 	/**
 	 * Registers {@code connection} for pinging. Usually called in
-	 * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig)}.
+	 * {@link jakarta.websocket.Endpoint#onOpen(Session, jakarta.websocket.EndpointConfig)}.
 	 */
 	public void addConnection(Session connection) {
 		PingPongPlayer pingPongPlayer;
@@ -166,7 +166,7 @@ public class WebsocketPingerService {
 
 	/**
 	 * Deregisters {@code connection}. Usually called in
-	 * {@link javax.websocket.Endpoint#onClose(Session, CloseReason)}.
+	 * {@link jakarta.websocket.Endpoint#onClose(Session, CloseReason)}.
 	 */
 	public void removeConnection(Session connection) {
 		var pingPongPlayer = connections.remove(connection);
