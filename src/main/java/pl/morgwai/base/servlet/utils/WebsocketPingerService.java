@@ -3,13 +3,13 @@ package pl.morgwai.base.servlet.utils;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 import javax.websocket.*;
 import javax.websocket.CloseReason.CloseCodes;
+import javax.websocket.RemoteEndpoint.Async;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,9 +56,10 @@ public class WebsocketPingerService {
 
 	final Thread pingingThread;
 
-	final ConcurrentMap<Session, PingPongPlayer> connections = new ConcurrentHashMap<>();
+
 
 	final Random random = new Random();
+	final ConcurrentMap<Session, Optional<PingPongPlayer>> connections = new ConcurrentHashMap<>();
 
 
 
@@ -81,9 +82,9 @@ public class WebsocketPingerService {
 		this.pingSize = pingSize;
 		this.synchronizeSending = synchronizeSending;
 		if (keepAliveOnly) {
-			pingingThread = new Thread(this::sendKeepAlivePeriodically);
+			pingingThread = new Thread(this::sendKeepAlivesPeriodically);
 		} else {
-			pingingThread = new Thread(this::pingConnectionsPeriodically);
+			pingingThread = new Thread(this::sendPingsPeriodically);
 		}
 		pingingThread.start();
 		if (log.isInfoEnabled()) {
@@ -117,8 +118,7 @@ public class WebsocketPingerService {
 	 * Calls {@link #WebsocketPingerService(int, int, int, boolean)
 	 * WebsocketPingerService(intervalSeconds, failureLimit, pingSize, false)} (ping-pong mode).
 	 */
-	public WebsocketPingerService(int intervalSeconds, int failureLimit, int pingSize)
-	{
+	public WebsocketPingerService(int intervalSeconds, int failureLimit, int pingSize) {
 		this(intervalSeconds, failureLimit, pingSize, false);
 	}
 
@@ -134,8 +134,9 @@ public class WebsocketPingerService {
 
 
 	/**
-	 * Configures and starts the service in keep-alive-only mode: failures are not counted.
-	 * See {@link #WebsocketPingerService(int, int, int, boolean)} for param descriptions.
+	 * Configures and starts the service in keep-alive-only mode: just 1 byte is sent each time
+	 * and responses are not expected. Remaining params have the same meaning as in
+	 * {@link #WebsocketPingerService(int, int, int, boolean)}.
 	 */
 	public WebsocketPingerService(int intervalSeconds, boolean synchronizeSending) {
 		this(true, intervalSeconds, -1, 1, synchronizeSending);
@@ -146,9 +147,7 @@ public class WebsocketPingerService {
 	 * WebsocketPingerService}<code>(intervalSeconds, false)</code>
 	 * (keep-alive-only mode).
 	 */
-	public WebsocketPingerService(int intervalSeconds) {
-		this(intervalSeconds, false);
-	}
+	public WebsocketPingerService(int intervalSeconds) { this(intervalSeconds, false); }
 
 
 
@@ -157,12 +156,15 @@ public class WebsocketPingerService {
 	 * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig)}.
 	 */
 	public void addConnection(Session connection) {
-		// ConcurrentHashMap doesn't allow null values so player needs to be created in both modes
-		PingPongPlayer player = new PingPongPlayer(connection, failureLimit, synchronizeSending);
-		if ( ! keepAliveOnly) {
-			connection.addMessageHandler(PongMessage.class, player);
+		// ConcurrentHashMap doesn't allow null values so we need Optional
+		Optional<PingPongPlayer> optionalPingPongPlayer;
+		if (keepAliveOnly) {
+			optionalPingPongPlayer = Optional.empty();
+		} else {
+			optionalPingPongPlayer = Optional.of(
+					new PingPongPlayer(connection, failureLimit, synchronizeSending));
 		}
-		connections.put(connection, player);
+		connections.put(connection, optionalPingPongPlayer);
 	}
 
 
@@ -172,8 +174,8 @@ public class WebsocketPingerService {
 	 * {@link javax.websocket.Endpoint#onClose(Session, CloseReason)}.
 	 */
 	public void removeConnection(Session connection) {
-		if ( ! keepAliveOnly) connection.removeMessageHandler(connections.get(connection));
-		connections.remove(connection);
+		var optionalPingPongPlayer =  connections.remove(connection);
+		if ( ! keepAliveOnly) optionalPingPongPlayer.get().deregister();
 	}
 
 
@@ -190,9 +192,9 @@ public class WebsocketPingerService {
 	/**
 	 * For {@link #pingingThread}.
 	 */
-	private void sendKeepAlivePeriodically() {
+	private void sendKeepAlivesPeriodically() {
 		var pingData = new byte[1];
-		pingData[0] = (byte) 69;  // arbitrarily chosen byte ;-)
+		pingData[0] = (byte) 69;  // arbitrarily chosen byte
 		var wrapper = ByteBuffer.wrap(pingData);
 		while (true) {
 			try {
@@ -211,7 +213,7 @@ public class WebsocketPingerService {
 				}
 				Thread.sleep(Math.max(0l,
 						intervalSeconds * 1000l - System.currentTimeMillis() + startMillis));
-			} catch (InterruptedException ignored) {
+			} catch (InterruptedException e) {
 				return;  // stop() was called
 			}
 		}
@@ -222,16 +224,18 @@ public class WebsocketPingerService {
 	/**
 	 * For {@link #pingingThread}.
 	 */
-	private void pingConnectionsPeriodically() {
+	private void sendPingsPeriodically() {
 		while (true) {
 			try {
 				var startMillis = System.currentTimeMillis();
-				byte[] pingData = new byte[pingSize];
+				var pingData = new byte[pingSize];
 				random.nextBytes(pingData);
-				for (PingPongPlayer player: connections.values()) player.ping(pingData);
+				for (Optional<PingPongPlayer> pingPongPlayer: connections.values()) {
+					pingPongPlayer.get().pingConnection(pingData);
+				}
 				Thread.sleep(Math.max(0l,
 						intervalSeconds * 1000l - System.currentTimeMillis() + startMillis));
-			} catch (InterruptedException ignored) {
+			} catch (InterruptedException e) {
 				return;  // stop() was called
 			}
 		}
@@ -250,8 +254,10 @@ public class WebsocketPingerService {
 			pingingThread.join();
 			log.info("pinger stopped");
 		} catch (InterruptedException ignored) {}
-		for (var entry: connections.entrySet()) {
-			entry.getKey().removeMessageHandler(entry.getValue());
+		if ( ! keepAliveOnly) {
+			for (Optional<PingPongPlayer> pingPongPlayer: connections.values()) {
+				pingPongPlayer.get().deregister();
+			}
 		}
 		return connections.keySet();
 	}
@@ -264,6 +270,7 @@ public class WebsocketPingerService {
 	static class PingPongPlayer implements MessageHandler.Whole<PongMessage> {
 
 		final Session connection;
+		final Async connector;
 		final int failureLimit;
 		final boolean synchronizeSending;
 
@@ -271,6 +278,8 @@ public class WebsocketPingerService {
 
 		PingPongPlayer(Session connection, int failureLimit, boolean synchronizeSending) {
 			this.connection = connection;
+			connector = connection.getAsyncRemote();
+			connection.addMessageHandler(PongMessage.class, this);
 			this.failureLimit = failureLimit;
 			this.synchronizeSending = synchronizeSending;
 		}
@@ -279,26 +288,24 @@ public class WebsocketPingerService {
 
 		int failureCount = 0;
 		boolean awaitingPong = false;
-		byte[] pingData = new byte[1];  // to not crash on some random pong before 1st ping
-		ByteBuffer wrapper = ByteBuffer.wrap(this.pingData);
+		ByteBuffer wrapper = ByteBuffer.wrap(new byte[1]);
 
 
 
-		synchronized void ping(byte[] pingData) {
+		synchronized void pingConnection(byte[] pingData) {
 			if (awaitingPong) failureCount++;
 			if (failureCount > failureLimit) {
 				closeFailedConnection(connection);
 				return;
 			}
-			this.pingData = pingData;
-			wrapper = ByteBuffer.wrap(this.pingData);
+			wrapper = ByteBuffer.wrap(pingData);
 			try {
 				if (synchronizeSending) {
 					synchronized (connection) {
-						connection.getAsyncRemote().sendPing(wrapper);
+						connector.sendPing(wrapper);
 					}
 				} else {
-					connection.getAsyncRemote().sendPing(wrapper);
+					connector.sendPing(wrapper);
 				}
 				awaitingPong = true;
 			} catch (IOException ignored) {}  // connection was closed in a meantime
@@ -320,7 +327,7 @@ public class WebsocketPingerService {
 
 
 
-		void closeFailedConnection(Session connection) {
+		private void closeFailedConnection(Session connection) {
 			if (log.isDebugEnabled()) {
 				log.debug("failure limit from " + connection.getId()
 						+ " exceeded, closing connection");
@@ -329,6 +336,12 @@ public class WebsocketPingerService {
 				connection.close(new CloseReason(
 						CloseCodes.PROTOCOL_ERROR, "ping failure limit exceeded"));
 			} catch (IOException ignored) {}
+		}
+
+
+
+		public void deregister() {
+			connection.removeMessageHandler(this);
 		}
 	}
 
