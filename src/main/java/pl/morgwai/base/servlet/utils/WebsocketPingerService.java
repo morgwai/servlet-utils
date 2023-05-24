@@ -83,7 +83,7 @@ public class WebsocketPingerService {
 		this.pingSize = pingSize;
 		this.synchronizeSending = synchronizeSending;
 		pingingTask = scheduler.scheduleAtFixedRate(
-				this::pingAllConnections, 0l, intervalSeconds, TimeUnit.SECONDS);
+				this::pingAllConnections, 0L, intervalSeconds, TimeUnit.SECONDS);
 		if (log.isInfoEnabled()) {
 			log.info("websockets will be pinged every " + intervalSeconds
 					+ "s,  failure limit: " + failureLimit + ", ping size: "
@@ -104,7 +104,7 @@ public class WebsocketPingerService {
 	 * @param synchronizeSending whether to synchronize ping sending on the given connection.
 	 *     Whether it is necessary depends on the implementation of the container. For example it is
 	 *     not necessary on Jetty, but it is on Tomcat: see
-	 *     <a href='https://bz.apache.org/bugzilla/show_bug.cgi?id=56026'>this bug report</a>.
+	 *     <a href="https://bz.apache.org/bugzilla/show_bug.cgi?id=56026">this bug report</a>.
 	 */
 	public WebsocketPingerService(
 			int intervalSeconds, int failureLimit, int pingSize, boolean synchronizeSending) {
@@ -211,7 +211,7 @@ public class WebsocketPingerService {
 			for (var pingPongPlayer: connections.values()) pingPongPlayer.deregister();
 		}
 		try {
-			scheduler.awaitTermination(500l, TimeUnit.MILLISECONDS);
+			scheduler.awaitTermination(500L, TimeUnit.MILLISECONDS);
 		} catch (InterruptedException ignored) {}
 		if ( ! scheduler.isTerminated()) scheduler.shutdownNow();
 		log.info("websocket pinger service stopped");
