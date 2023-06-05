@@ -60,7 +60,8 @@ public class WebsocketPingerService {
 	final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 	final ScheduledFuture<?> pingingTask;
 	final Random random = new Random();
-	final ConcurrentMap<Session, PingPongPlayer> connections = new ConcurrentHashMap<>();
+	final ConcurrentMap<Session, PingPongPlayer> connectionPingPongPlayers =
+			new ConcurrentHashMap<>();
 
 
 
@@ -74,7 +75,7 @@ public class WebsocketPingerService {
 		if (pingSize > 125 || pingSize < 1) {
 			throw new IllegalArgumentException("ping size must be between 1 and 125");
 		}
-		if ( ( ! keepAliveOnly) && failureLimit < 0) {
+		if ( ( !keepAliveOnly) && failureLimit < 0) {
 			throw new IllegalArgumentException("failure limit cannot be negative");
 		}
 		this.keepAliveOnly = keepAliveOnly;
@@ -94,7 +95,7 @@ public class WebsocketPingerService {
 
 
 	/**
-	 * Configures and starts the service in ping-pong mode.
+	 * Configures and starts the service in ping-pong mode: timely pongs are expected and validated.
 	 * @param intervalSeconds interval between pings.
 	 * @param failureLimit limit of lost or malformed pongs after which the given connection is
 	 *     closed. Pongs received after {@code pingIntervalSeconds} count as failures. Each valid,
@@ -159,7 +160,7 @@ public class WebsocketPingerService {
 		} else {
 			pingPongPlayer = new PingPongPlayer(connection, failureLimit, synchronizeSending);
 		}
-		connections.put(connection, pingPongPlayer);
+		connectionPingPongPlayers.put(connection, pingPongPlayer);
 	}
 
 
@@ -169,8 +170,8 @@ public class WebsocketPingerService {
 	 * {@link javax.websocket.Endpoint#onClose(Session, CloseReason)}.
 	 */
 	public void removeConnection(Session connection) {
-		var pingPongPlayer = connections.remove(connection);
-		if ( ! keepAliveOnly) pingPongPlayer.deregister();
+		var pingPongPlayer = connectionPingPongPlayers.remove(connection);
+		if ( !keepAliveOnly) pingPongPlayer.deregister();
 	}
 
 
@@ -179,7 +180,7 @@ public class WebsocketPingerService {
 	 * Returns the number of currently registered connections.
 	 */
 	public int getNumberOfConnections() {
-		return connections.size();
+		return connectionPingPongPlayers.size();
 	}
 
 
@@ -189,11 +190,15 @@ public class WebsocketPingerService {
 	 */
 	private void pingAllConnections() {
 		if (keepAliveOnly) {
-			for (var pinger: connections.values()) pinger.sendKeepAlive();
+			for (var pingPongPlayer: connectionPingPongPlayers.values()) {
+				pingPongPlayer.sendKeepAlive();
+			}
 		} else {
 			var pingData = new byte[pingSize];
 			random.nextBytes(pingData);
-			for (var pinger: connections.values()) pinger.pingConnection(pingData);
+			for (var pingPongPlayer: connectionPingPongPlayers.values()) {
+				pingPongPlayer.pingConnection(pingData);
+			}
 		}
 	}
 
@@ -207,15 +212,17 @@ public class WebsocketPingerService {
 	public Set<Session> stop() {
 		pingingTask.cancel(true);
 		scheduler.shutdown();
-		if ( ! keepAliveOnly) {
-			for (var pingPongPlayer: connections.values()) pingPongPlayer.deregister();
+		if ( !keepAliveOnly) {
+			for (var pingPongPlayer: connectionPingPongPlayers.values()) {
+				pingPongPlayer.deregister();
+			}
 		}
 		try {
 			scheduler.awaitTermination(500L, TimeUnit.MILLISECONDS);
 		} catch (InterruptedException ignored) {}
-		if ( ! scheduler.isTerminated()) scheduler.shutdownNow();
+		if ( !scheduler.isTerminated()) scheduler.shutdownNow();
 		log.info("websocket pinger service stopped");
-		return connections.keySet();
+		return connectionPingPongPlayers.keySet();
 	}
 
 
