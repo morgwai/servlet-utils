@@ -1,7 +1,7 @@
 #!/bin/bash
 rm -f build.gradle settings.gradle &&
 
-./gradlew init --type pom --dsl groovy &&
+./gradlew init --type pom --dsl groovy <<< 'no' &&
 sed -n -e '/^dependencies {/,/^}/p' <build.gradle |head -n -1 |sed -e 's#implementation#api#' \
     >dependencies.txt &&
 grep -E 'compileOnly|providedCompile' <dependencies.txt |sed -e 's#compileOnly#testImplementation#' \
