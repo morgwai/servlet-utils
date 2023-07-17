@@ -5,13 +5,12 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import javax.websocket.*;
 import javax.websocket.CloseReason.CloseCodes;
 import javax.websocket.RemoteEndpoint.Async;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 
 
@@ -85,7 +84,7 @@ public class WebsocketPingerService {
 		this.synchronizeSending = synchronizeSending;
 		pingingTask = scheduler.scheduleAtFixedRate(
 				this::pingAllConnections, 0L, intervalSeconds, TimeUnit.SECONDS);
-		if (log.isInfoEnabled()) {
+		if (log.isLoggable(Level.INFO)) {
 			log.info("websockets will be pinged every " + intervalSeconds
 					+ "s,  failure limit: " + failureLimit + ", ping size: "
 					+ pingSize + "B, synchronize ping sending: " + synchronizeSending);
@@ -330,8 +329,8 @@ public class WebsocketPingerService {
 
 
 		private void closeFailedConnection(Session connection) {
-			if (log.isDebugEnabled()) {
-				log.debug("failure limit from " + connection.getId()
+			if (log.isLoggable(Level.FINE)) {
+				log.fine("failure limit from " + connection.getId()
 						+ " exceeded, closing connection");
 			}
 			try {
@@ -349,5 +348,5 @@ public class WebsocketPingerService {
 
 
 
-	static final Logger log = LoggerFactory.getLogger(WebsocketPingerService.class.getName());
+	static final Logger log = Logger.getLogger(WebsocketPingerService.class.getName());
 }

@@ -40,15 +40,6 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 	</properties>
 
-	<dependencies>
-		<dependency>
-			<groupId>org.slf4j</groupId>
-			<artifactId>slf4j-api</artifactId>
-			<version>[1.7.32,)</version>
-			<optional>true</optional>
-		</dependency>
-	</dependencies>
-
 	<profiles>
 		<profile>
 			<id>javax</id>
