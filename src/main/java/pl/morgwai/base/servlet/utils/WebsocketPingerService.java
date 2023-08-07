@@ -147,7 +147,7 @@ public class WebsocketPingerService {
 	 * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig)}.
 	 */
 	public void addConnection(Session connection) {
-		PingPongPlayer pingPongPlayer;
+		final PingPongPlayer pingPongPlayer;
 		if (keepAliveOnly) {
 			pingPongPlayer = new PingPongPlayer(connection, synchronizeSending);
 		} else {
@@ -163,7 +163,7 @@ public class WebsocketPingerService {
 	 * {@link javax.websocket.Endpoint#onClose(Session, CloseReason)}.
 	 */
 	public void removeConnection(Session connection) {
-		var pingPongPlayer = connectionPingPongPlayers.remove(connection);
+		final var pingPongPlayer = connectionPingPongPlayers.remove(connection);
 		if ( !keepAliveOnly) pingPongPlayer.deregister();
 	}
 
@@ -183,7 +183,7 @@ public class WebsocketPingerService {
 				pingPongPlayer.sendKeepAlive();
 			}
 		} else {
-			var pingData = new byte[pingSize];
+			final var pingData = new byte[pingSize];
 			random.nextBytes(pingData);
 			for (var pingPongPlayer: connectionPingPongPlayers.values()) {
 				pingPongPlayer.pingConnection(pingData);
