@@ -32,21 +32,15 @@ public class WebsocketPingerService {
 
 
 
-	/**
-	 * Majority of proxy and NAT routers have timeout of at least 60s.
-	 */
+	/** Majority of proxy and NAT routers have timeout of at least 60s. */
 	public static final int DEFAULT_INTERVAL = 55;
 	final int intervalSeconds;
 
-	/**
-	 * Arbitrarily chosen number.
-	 */
+	/** Arbitrarily chosen number. */
 	public static final int DEFAULT_FAILURE_LIMIT = 4;
 	final int failureLimit;
 
-	/**
-	 * Economic value to reduce use of {@link Random}.
-	 */
+	/** Economic value to reduce use of {@link Random}. */
 	public static final int DEFAULT_PING_SIZE = 4;
 	final int pingSize;
 
@@ -175,18 +169,14 @@ public class WebsocketPingerService {
 
 
 
-	/**
-	 * Returns the number of currently registered connections.
-	 */
+	/** Returns the number of currently registered connections. */
 	public int getNumberOfConnections() {
 		return connectionPingPongPlayers.size();
 	}
 
 
 
-	/**
-	 * {@link #pingingTask}
-	 */
+	/** {@link #pingingTask} */
 	private void pingAllConnections() {
 		if (keepAliveOnly) {
 			for (var pingPongPlayer: connectionPingPongPlayers.values()) {
@@ -226,62 +216,67 @@ public class WebsocketPingerService {
 
 
 
-	/**
-	 * Plays ping-pong with a single associated connection.
-	 */
+	/** Plays ping-pong with a single associated connection (or sends just keep-alives to it). */
 	static class PingPongPlayer implements MessageHandler.Whole<PongMessage> {
 
 		final Session connection;
 		final Async connector;
 		final boolean synchronizeSending;
-		ByteBuffer wrapper;
+		ByteBuffer packetDataBuffer;
 
 		final int failureLimit;  // only used in ping-pong mode
 
 
 
 		private PingPongPlayer(
-			Session connection, int failureLimit, boolean synchronizeSending, byte[] initialPingData
+			Session connection,
+			int failureLimit,
+			boolean synchronizeSending,
+			byte[] initialPacketData
 		) {
 			this.connection = connection;
 			connector = connection.getAsyncRemote();
 			this.failureLimit = failureLimit;
 			this.synchronizeSending = synchronizeSending;
-			wrapper = ByteBuffer.wrap(initialPingData);  // needed in ping-pong mode also to not
-				// to not crash on pongs received before the 1st ping
-		}
-
-
-
-		@FunctionalInterface
-		private interface Connector { void sendPacket(ByteBuffer data) throws IOException; }
-
-		private void sendPacketAndRewind(Connector connector) {
-			try {
-				if (synchronizeSending) {
-					synchronized (connection) {
-						connector.sendPacket(wrapper);
-					}
-				} else {
-					connector.sendPacket(wrapper);
-				}
-			} catch (IOException ignored) {}  // connection was probably closed in a meantime
-			wrapper.rewind();
+			packetDataBuffer = ByteBuffer.wrap(initialPacketData);  // needed in ping-pong mode also
+					// to not crash on pongs received before the 1st ping
 		}
 
 
 
 		/**
-		 * Constructor for keep-alive-only mode.
+		 *  References either {@link Async#sendPong(ByteBuffer) sendPong(...)} or
+		 * {@link Async#sendPing(ByteBuffer) sendPing(...)}.
 		 */
-		PingPongPlayer(Session connection, boolean synchronizeSending) {
-			this(connection, -1, synchronizeSending, new byte[]{(byte) 69});  // arbitrary byte
+		@FunctionalInterface
+		private interface Connector { void sendPacket(ByteBuffer data) throws IOException; }
+
+		/**
+		 * Uses {@code connector} to send a packet either synchronizing on {@link #connection} or
+		 * not depending on {@link #synchronizeSending}.
+		 */
+		private void sendPacket(Connector connector) {
+			try {
+				if (synchronizeSending) {
+					synchronized (connection) {
+						connector.sendPacket(packetDataBuffer);
+					}
+				} else {
+					connector.sendPacket(packetDataBuffer);
+				}
+			} catch (IOException ignored) {}  // connection was probably closed in a meantime
 		}
 
 
 
+		/** Constructor for keep-alive-only mode. */
+		PingPongPlayer(Session connection, boolean synchronizeSending) {
+			this(connection, -1, synchronizeSending, new byte[]{(byte) connection.hashCode()});
+		}
+
 		void sendKeepAlive() {
-			sendPacketAndRewind(connector::sendPong);
+			sendPacket(connector::sendPong);
+			packetDataBuffer.rewind();  // reuse the same buffer in future keep-alives
 		}
 
 
@@ -307,8 +302,9 @@ public class WebsocketPingerService {
 				closeFailedConnection(connection);
 				return;
 			}
-			wrapper = ByteBuffer.wrap(pingData);
-			sendPacketAndRewind(connector::sendPing);
+			packetDataBuffer = ByteBuffer.wrap(pingData);
+			sendPacket(connector::sendPing);
+			packetDataBuffer.rewind();
 			awaitingPong = true;  // send failure counts as failure, so flip the flag in both cases
 				// send failures are usually caused by connection closing, so no point bothering
 		}
@@ -318,7 +314,7 @@ public class WebsocketPingerService {
 		@Override
 		public synchronized void onMessage(PongMessage pong) {
 			awaitingPong = false;
-			if (pong.getApplicationData().equals(wrapper)) {
+			if (pong.getApplicationData().equals(packetDataBuffer)) {
 				failureCount = 0;
 			} else {
 				failureCount++;
