@@ -313,6 +313,7 @@ public class WebsocketPingerService {
 
 		@Override
 		public synchronized void onMessage(PongMessage pong) {
+			if ( !awaitingPong) return;  // keep-alive from the remote end: don't count as failure
 			awaitingPong = false;
 			if (pong.getApplicationData().equals(packetDataBuffer)) {
 				failureCount = 0;
