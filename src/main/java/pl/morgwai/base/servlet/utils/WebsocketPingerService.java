@@ -78,11 +78,6 @@ public class WebsocketPingerService {
 		this.synchronizeSending = synchronizeSending;
 		pingingTask = scheduler.scheduleAtFixedRate(
 				this::pingAllConnections, 0L, intervalSeconds, TimeUnit.SECONDS);
-		if (log.isLoggable(Level.INFO)) {
-			log.info("websockets will be pinged every " + intervalSeconds
-					+ "s,  failure limit: " + failureLimit + ", ping size: "
-					+ pingSize + "B, synchronize ping sending: " + synchronizeSending);
-		}
 	}
 
 
