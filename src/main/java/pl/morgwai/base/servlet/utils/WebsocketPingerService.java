@@ -264,7 +264,10 @@ public class WebsocketPingerService {
 				} else {
 					connector.sendPacket(packetDataBuffer);
 				}
-			} catch (IOException ignored) {}  // connection was probably closed in a meantime
+			} catch (IOException e) {
+				// connection was probably closed in a meantime, try formally close just in case
+				closeFailedConnection();
+			}
 		}
 
 
@@ -299,7 +302,7 @@ public class WebsocketPingerService {
 		synchronized void pingConnection(byte[] pingData) {
 			if (awaitingPong) failureCount++;
 			if (failureCount > failureLimit) {
-				closeFailedConnection(connection);
+				closeFailedConnection();
 				return;
 			}
 			packetDataBuffer = ByteBuffer.wrap(pingData);
@@ -319,20 +322,17 @@ public class WebsocketPingerService {
 				failureCount = 0;
 			} else {
 				failureCount++;
-				if (failureCount > failureLimit) closeFailedConnection(connection);
+				if (failureCount > failureLimit) closeFailedConnection();
 			}
 		}
 
 
 
-		private void closeFailedConnection(Session connection) {
-			if (log.isLoggable(Level.FINE)) {
-				log.fine("failure limit from " + connection.getId()
-						+ " exceeded, closing connection");
-			}
+		private void closeFailedConnection() {
+			if (log.isLoggable(Level.FINE)) log.fine("failure on connection " + connection.getId());
 			try {
 				connection.close(new CloseReason(
-						CloseCodes.PROTOCOL_ERROR, "ping failure limit exceeded"));
+						CloseCodes.PROTOCOL_ERROR, "communication failure"));
 			} catch (IOException ignored) {}
 		}
 
