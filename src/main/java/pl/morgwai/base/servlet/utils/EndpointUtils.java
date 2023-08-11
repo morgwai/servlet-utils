@@ -1,3 +1,4 @@
+// Copyright (c) Piotr Morgwai Kotarbinski, Licensed under the Apache License, Version 2.0
 package pl.morgwai.base.servlet.utils;
 
 import java.lang.annotation.Annotation;
@@ -55,7 +56,7 @@ public interface EndpointUtils {
 	) {
 		if (
 			method.getAnnotation(annotationClass) != null
-				&& ! Endpoint.class.isAssignableFrom(method.getDeclaringClass())
+			&& ! Endpoint.class.isAssignableFrom(method.getDeclaringClass())
 		) {
 			return true;
 		}
