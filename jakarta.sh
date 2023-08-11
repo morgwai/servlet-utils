@@ -13,7 +13,8 @@ mv pom.jakarta.xml pom.xml &&
 find src -name '*.java' | while read file; do
 	sed -e 's#javax.servlet#jakarta.servlet#g' \
 		-e 's#javax.websocket#jakarta.websocket#g' \
-		-e 's#javax.persistence#jakarta.persistence#g' \
+		-e 's#org.eclipse.jetty.websocket.javax#org.eclipse.jetty.websocket.jakarta#g' \
+		-e 's#JavaxWebSocket#JakartaWebSocket#g' \
 		<"${file}" >"${file}.jakarta" &&
 	mv "${file}.jakarta" "${file}";
 done
