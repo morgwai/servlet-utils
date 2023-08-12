@@ -72,11 +72,20 @@ public class WebsocketPingerServiceTests {
 
 
 
+	/**
+	 * A static point of synchronization between a given test method and the corresponding
+	 * container-created {@link ServerEndpoint} instance. As each test method deploys its
+	 * {@link ServerEndpoint} at a different URI/path, tests may safely run in parallel.
+	 */
 	static final ConcurrentMap<URI, CountDownLatch> serverEndpointCreated =
 			new ConcurrentHashMap<>();
+
+	/**
+	 * A static place for a given test method to find its corresponding container-created
+	 * {@link ServerEndpoint} instance.
+	 * @see #serverEndpointCreated
+	 */
 	static final ConcurrentMap<URI, ServerEndpoint> serverEndpointInstance =
-			new ConcurrentHashMap<>();
-	static final ConcurrentMap<URI, CountDownLatch> serverEndpointClosed =
 			new ConcurrentHashMap<>();
 
 
@@ -84,8 +93,14 @@ public class WebsocketPingerServiceTests {
 	public static abstract class BaseEndpoint extends Endpoint {
 
 		protected Session connection;
+
+		/** For logging/debugging: {@code ("client " | "server ") + PATH}. */
 		protected String id;
-		final List<Throwable> errors = new LinkedList<>();
+
+		/** {@link #onError(Session, Throwable)} stores received errors here. */
+		protected final List<Throwable> errors = new LinkedList<>();
+
+		/** Switched in {@link #onClose(Session, CloseReason)}. */
 		protected CountDownLatch closed = new CountDownLatch(1);
 
 		@Override
@@ -110,6 +125,10 @@ public class WebsocketPingerServiceTests {
 
 	public static class ServerEndpoint extends BaseEndpoint {
 
+		/**
+		 * Calculates its {@link #id} from the request URI, stores itself into
+		 * {@link #serverEndpointInstance} and switches its {@link #serverEndpointCreated}.
+		 */
 		@Override
 		public void onOpen(Session connection, EndpointConfig config) {
 			super.onOpen(connection, config);
@@ -146,7 +165,20 @@ public class WebsocketPingerServiceTests {
 
 
 
-	public void test(
+	/**
+	 * Performs {@code test} over a websocket connection.
+	 * <ol>
+	 *   <li>establishes a connection between a {@link ClientEndpoint} and {@link #server}</li>
+	 *   <li>calls {@code test}</li>
+	 *   <li>depending on the value of {@code closeClientConnection} closes the connections from the
+	 *       client side</li>
+	 *    <li>regardless of {@code closeClientConnection}, verifies if the connection was closed on
+	 *        both endpoints with {@code expectedClientCloseCode} on the client side</li>
+	 *    <li>verifies if there were no calls to {@link Endpoint#onError(Session, Throwable)} on
+	 *        either endpoint</li>
+	 * </ol>
+	 */
+	public void performTest(
 		String path,
 		boolean closeClientConnection,
 		CloseCode expectedClientCloseCode,
@@ -156,7 +188,6 @@ public class WebsocketPingerServiceTests {
 		final var clientEndpoint = new ClientEndpoint(path);
 		final var url = URI.create(websocketUrl + path);
 		serverEndpointCreated.put(url, new CountDownLatch(1));
-		serverEndpointClosed.put(url, new CountDownLatch(1));
 		final ServerEndpoint serverEndpoint;
 		final var clientConnection = clientWebsocketContainer.connectToServer(
 				clientEndpoint, null, url);
@@ -175,12 +206,12 @@ public class WebsocketPingerServiceTests {
 		if ( !serverEndpoint.closed.await(100L, TimeUnit.MILLISECONDS)) {
 			fail("ServerEndpoint should be closed");
 		}
+		assertEquals("client close code should match",
+				expectedClientCloseCode.getCode(), clientEndpoint.closeCode.getCode());
 		assertTrue("ServerEndpoint should not receive any onError(...) calls",
 				serverEndpoint.errors.isEmpty());
 		assertTrue("ClientEndpoint should not receive any onError(...) calls",
 				clientEndpoint.errors.isEmpty());
-		assertEquals("client close code should match",
-				expectedClientCloseCode.getCode(), clientEndpoint.closeCode.getCode());
 	}
 
 
@@ -188,7 +219,7 @@ public class WebsocketPingerServiceTests {
 	@Test
 	public void testKeepAlive() throws Throwable {
 		final var PATH = "/testKeepAlive";
-		test(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
+		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
 			final var pongReceived = new CountDownLatch(1);
 			clientEndpoint.connection.addMessageHandler(PongMessage.class, (pong) -> {
 				log.fine("client " + PATH + " got pong");
@@ -202,10 +233,11 @@ public class WebsocketPingerServiceTests {
 					fail("pong should be received");
 				}
 			} catch (InterruptedException e) {
-				fail("pong should be received");
+				fail("test interrupted");
 			}
 			assertEquals("failure count should still be 0", 0, pingPongPlayer.failureCount);
-			assertFalse("player should not be awaiting for pong", pingPongPlayer.awaitingPong);
+			assertFalse("pingPongPlayer should not be awaiting for pong",
+					pingPongPlayer.awaitingPong);
 		});
 	}
 
@@ -214,7 +246,7 @@ public class WebsocketPingerServiceTests {
 	@Test
 	public void testPingPong() throws Throwable {
 		final var PATH = "/testPingPong";
-		test(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
+		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
 			final var pongReceived = new CountDownLatch(1);
 			final var pingPongPlayer = new PingPongPlayer(serverEndpoint.connection, 2, false);
 			serverEndpoint.connection.removeMessageHandler(pingPongPlayer);
@@ -231,10 +263,11 @@ public class WebsocketPingerServiceTests {
 					fail("pong should be received");
 				}
 			} catch (InterruptedException e) {
-				fail("pong should be received");
+				fail("test interrupted");
 			}
 			assertEquals("failure count should be reset", 0, pingPongPlayer.failureCount);
-			assertFalse("player should not be awaiting pong anymore", pingPongPlayer.awaitingPong);
+			assertFalse("pingPongPlayer should not be awaiting for pong anymore",
+					pingPongPlayer.awaitingPong);
 		});
 	}
 
@@ -243,7 +276,7 @@ public class WebsocketPingerServiceTests {
 	@Test
 	public void testMalformedPong() throws Throwable {
 		final var PATH = "/testMalformedPong";
-		test(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
+		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
 			final var pongReceived = new CountDownLatch(1);
 			final var pingPongPlayer = new PingPongPlayer(serverEndpoint.connection, 2, false);
 			serverEndpoint.connection.removeMessageHandler(pingPongPlayer);
@@ -261,10 +294,11 @@ public class WebsocketPingerServiceTests {
 					fail("pong should be received");
 				}
 			} catch (InterruptedException e) {
-				fail("pong should be received");
+				fail("test interrupted");
 			}
 			assertEquals("failure count should be increased", 1, pingPongPlayer.failureCount);
-			assertFalse("player should not be awaiting pong anymore", pingPongPlayer.awaitingPong);
+			assertFalse("pingPongPlayer should not be awaiting for pong anymore",
+					pingPongPlayer.awaitingPong);
 		});
 	}
 
@@ -273,16 +307,18 @@ public class WebsocketPingerServiceTests {
 	@Test
 	public void testTimedOutPong() throws Throwable {
 		final var PATH = "/testTimedOutPong";
-		test(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
+		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
 			final var pingPongPlayer = new PingPongPlayer(serverEndpoint.connection, 2, false);
 			serverEndpoint.connection.removeMessageHandler(pingPongPlayer);
 
 			pingPongPlayer.sendPing("firstPingData".getBytes(StandardCharsets.UTF_8));
-			assertTrue("player should be still awaiting for pong", pingPongPlayer.awaitingPong);
+			assertTrue("pingPongPlayer should be still awaiting for pong",
+					pingPongPlayer.awaitingPong);
 			assertEquals("failure count should still be 0", 0, pingPongPlayer.failureCount);
 
 			pingPongPlayer.sendPing("secondPingData".getBytes(StandardCharsets.UTF_8));
-			assertTrue("player should be still awaiting for pong", pingPongPlayer.awaitingPong);
+			assertTrue("pingPongPlayer should be still awaiting for pong",
+					pingPongPlayer.awaitingPong);
 			assertEquals("failure count should be increased", 1, pingPongPlayer.failureCount);
 		});
 	}
@@ -292,7 +328,7 @@ public class WebsocketPingerServiceTests {
 	@Test
 	public void testFailureLimitExceeded() throws Throwable {
 		final var PATH = "/testFailureLimitExceeded";
-		test(PATH, false, CloseCodes.PROTOCOL_ERROR, (serverEndpoint, clientEndpoint) -> {
+		performTest(PATH, false, CloseCodes.PROTOCOL_ERROR, (serverEndpoint, clientEndpoint) -> {
 			final var pongReceived = new CountDownLatch(1);
 			final var pingPongPlayer = new PingPongPlayer(serverEndpoint.connection, 0, false);
 			serverEndpoint.connection.removeMessageHandler(pingPongPlayer);
@@ -310,10 +346,11 @@ public class WebsocketPingerServiceTests {
 					fail("pong should be received");
 				}
 			} catch (InterruptedException e) {
-				fail("pong should be received");
+				fail("test interrupted");
 			}
 			assertEquals("failure count should be increased", 1, pingPongPlayer.failureCount);
-			assertFalse("player should not be awaiting pong anymore", pingPongPlayer.awaitingPong);
+			assertFalse("pingPongPlayer should not be awaiting for pong anymore",
+					pingPongPlayer.awaitingPong);
 		});
 	}
 
@@ -325,7 +362,7 @@ public class WebsocketPingerServiceTests {
 		final int NUM_EXPECTED_PONGS = 3;
 		final var service = new WebsocketPingerService(1, false);
 		try {
-			test(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
+			performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
 				final var pongCounter = new AtomicInteger(0);
 				clientEndpoint.connection.addMessageHandler(PongMessage.class, (pong) -> {
 					log.fine("client " + PATH + " got pong");
