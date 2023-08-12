@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -321,32 +322,34 @@ public class WebsocketPingerServiceTests {
 	@Test
 	public void testServiceKeepAliveRate() throws Throwable {
 		final var PATH = "/testServiceKeepAliveRate";
-		final int EXPECTED_PONGS = 3;
+		final int NUM_EXPECTED_PONGS = 3;
 		final var service = new WebsocketPingerService(1, false);
 		try {
 			test(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
-				final var pongsReceived = new CountDownLatch(EXPECTED_PONGS);
+				final var pongCounter = new AtomicInteger(0);
 				clientEndpoint.connection.addMessageHandler(PongMessage.class, (pong) -> {
 					log.fine("client " + PATH + " got pong");
-					pongsReceived.countDown();
+					pongCounter.incrementAndGet();
 				});
+				assertEquals("there should be no registered connection initially",
+						0, service.getNumberOfConnections());
 				service.addConnection(serverEndpoint.connection);
 				try {
-					if (
-						!pongsReceived.await(1000L * (EXPECTED_PONGS + 1), TimeUnit.MILLISECONDS)
-					) {
-						fail("at least " + EXPECTED_PONGS + " pongs should be received");
-					}
+					assertEquals("there should be 1 registered connection after adding",
+							1, service.getNumberOfConnections());
+					Thread.sleep(1000L * NUM_EXPECTED_PONGS);
 				} catch (InterruptedException e) {
-					fail("at least " + EXPECTED_PONGS + " pongs should be received");
+					fail("test interrupted");
 				} finally {
 					service.removeConnection(serverEndpoint.connection);
 				}
+				assertEquals("correct number of pongs should be received within the timeframe",
+						NUM_EXPECTED_PONGS, pongCounter.get());
 				assertEquals("there should be no registered connection after removing",
 						0, service.getNumberOfConnections());
 			});
 		} finally {
-			assertTrue("there should be no registered connection after removing",
+			assertTrue("there should be no remaining connections in the service",
 					service.stop().isEmpty());
 		}
 	}
