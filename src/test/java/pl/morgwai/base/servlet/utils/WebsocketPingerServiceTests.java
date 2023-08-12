@@ -247,17 +247,27 @@ public class WebsocketPingerServiceTests {
 	public void testPingPong() throws Throwable {
 		final var PATH = "/testPingPong";
 		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
+			final var postPingVerificationsDone = new CountDownLatch(1);
 			final var pongReceived = new CountDownLatch(1);
 			final var pingPongPlayer = new PingPongPlayer(serverEndpoint.connection, 2, false);
 			serverEndpoint.connection.removeMessageHandler(pingPongPlayer);
 			serverEndpoint.connection.addMessageHandler(PongMessage.class, (pong) -> {
 				log.fine("server " + PATH + " got pong, forwarding");
+				try {
+					postPingVerificationsDone.await(100L, TimeUnit.MILLISECONDS);
+				} catch (InterruptedException ignored) {}
 				pingPongPlayer.onMessage(pong);
 				pongReceived.countDown();
 			});
 			pingPongPlayer.failureCount = 1;
 
 			pingPongPlayer.sendPing("testPingData".getBytes(StandardCharsets.UTF_8));
+			try {
+				assertTrue("pingPongPlayer should be awaiting for pong",
+						pingPongPlayer.awaitingPong);
+			} finally {
+				postPingVerificationsDone.countDown();
+			}
 			try {
 				if ( !pongReceived.await(100L, TimeUnit.MILLISECONDS)) {
 					fail("pong should be received");
