@@ -1,6 +1,7 @@
 // Copyright (c) Piotr Morgwai Kotarbinski, Licensed under the Apache License, Version 2.0
 package pl.morgwai.base.servlet.utils;
 
+import java.io.IOException;
 import java.net.CookieManager;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -277,6 +278,38 @@ public class WebsocketPingerServiceTests {
 			}
 			assertEquals("failure count should be reset", 0, pingPongPlayer.failureCount);
 			assertFalse("pingPongPlayer should not be awaiting for pong anymore",
+					pingPongPlayer.awaitingPong);
+		});
+	}
+
+
+
+	@Test
+	public void testKeepAliveFromClient() throws Throwable {
+		final var PATH = "/testKeepAliveFromClient";
+		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
+			final var pongReceived = new CountDownLatch(1);
+			final var pingPongPlayer = new PingPongPlayer(serverEndpoint.connection, 2, false);
+			serverEndpoint.connection.removeMessageHandler(pingPongPlayer);
+			serverEndpoint.connection.addMessageHandler(PongMessage.class, (pong) -> {
+				log.fine("server " + PATH + " got pong, forwarding");
+				pingPongPlayer.onMessage(pong);
+				pongReceived.countDown();
+			});
+			final var pongData = ByteBuffer.wrap("keepAlive".getBytes(StandardCharsets.UTF_8));
+
+			try {
+				clientEndpoint.connection.getAsyncRemote().sendPong(pongData);
+				if ( !pongReceived.await(100L, TimeUnit.MILLISECONDS)) {
+					fail("pong should be received");
+				}
+			} catch (InterruptedException e) {
+				fail("test interrupted");
+			} catch (IOException e) {
+				fail("unexpected connection problem " + e);
+			}
+			assertEquals("failure count should not increase", 0, pingPongPlayer.failureCount);
+			assertFalse("pingPongPlayer should not be awaiting for pong",
 					pingPongPlayer.awaitingPong);
 		});
 	}
