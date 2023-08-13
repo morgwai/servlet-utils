@@ -328,10 +328,13 @@ public class WebsocketPingerService {
 
 		/** Called by the service's worker thread. */
 		synchronized void sendPing(byte[] pingData) {
-			if (awaitingPong) failureCount++;  // the previous ping timed out
-			if (failureCount > failureLimit) {
-				closeFailedConnection();
-				return;
+			if (awaitingPong) {
+				// the previous ping timed out
+				failureCount++;
+				if (failureCount > failureLimit) {
+					closeFailedConnection();
+					return;
+				}
 			}
 			packetDataBuffer = ByteBuffer.wrap(pingData);
 			try {
