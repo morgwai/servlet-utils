@@ -261,7 +261,6 @@ public class WebsocketPingerService {
 
 
 
-
 		/** Constructor for keep-alive-only mode. */
 		PingPongPlayer(Session connection, boolean synchronizeSending) {
 			this(connection, connection.getAsyncRemote(), synchronizeSending);
@@ -316,7 +315,6 @@ public class WebsocketPingerService {
 				failureLimit
 			);
 		}
-
 
 
 
