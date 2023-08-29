@@ -280,7 +280,7 @@ public class WebsocketPingerService {
 			if (log.isLoggable(Level.FINE)) log.fine("failure on connection " + connection.getId());
 			try {
 				connection.close(new CloseReason(
-					CloseCodes.PROTOCOL_ERROR, "communication failure"));
+					CloseCodes.PROTOCOL_ERROR, "ping failure limit exceeded"));
 			} catch (IOException ignored) {}
 		}
 
