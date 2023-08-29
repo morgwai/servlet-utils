@@ -222,13 +222,17 @@ public class WebsocketPingerServiceTests {
 		final var PATH = "/testKeepAlive";
 		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
 			final var pongReceived = new CountDownLatch(1);
-			clientEndpoint.connection.addMessageHandler(PongMessage.class, (pong) -> {
-				log.fine("client " + PATH + " got pong");
+			final var pingPongPlayer = new PingPongPlayer(serverEndpoint.connection, -1, false);
+			serverEndpoint.connection.removeMessageHandler(pingPongPlayer);
+			serverEndpoint.connection.addMessageHandler(PongMessage.class, (pong) -> {
+				log.fine("server " + PATH + " got pong");
+				final var someOtherData =
+						ByteBuffer.wrap("someOtherData".getBytes(StandardCharsets.UTF_8));
+				pingPongPlayer.onMessage(() -> someOtherData);
 				pongReceived.countDown();
 			});
-			final var pingPongPlayer = new PingPongPlayer(serverEndpoint.connection, false);
 
-			pingPongPlayer.sendKeepAlive();
+			pingPongPlayer.sendPing(new byte[]{69});
 			try {
 				if ( !pongReceived.await(100L, TimeUnit.MILLISECONDS)) {
 					fail("pong should be received");
@@ -236,7 +240,7 @@ public class WebsocketPingerServiceTests {
 			} catch (InterruptedException e) {
 				fail("test interrupted");
 			}
-			assertEquals("failure count should still be 0", 0, pingPongPlayer.failureCount);
+			assertEquals("failure count should not increase", 0, pingPongPlayer.failureCount);
 			assertFalse("pingPongPlayer should not be awaiting for pong",
 					pingPongPlayer.awaitingPong);
 		});
@@ -407,13 +411,20 @@ public class WebsocketPingerServiceTests {
 		try {
 			performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
 				final var pongCounter = new AtomicInteger(0);
-				clientEndpoint.connection.addMessageHandler(PongMessage.class, (pong) -> {
-					log.fine("client " + PATH + " got pong");
-					pongCounter.incrementAndGet();
-				});
 				assertEquals("there should be no registered connection initially",
 						0, service.getNumberOfConnections());
 				service.addConnection(serverEndpoint.connection);
+				final var pingPongPlayer = serverEndpoint.connection.getMessageHandlers().stream()
+					.filter(PingPongPlayer.class::isInstance)
+					.map(PingPongPlayer.class::cast)
+					.findFirst()
+					.orElseThrow();
+				serverEndpoint.connection.removeMessageHandler(pingPongPlayer);
+				serverEndpoint.connection.addMessageHandler(PongMessage.class, (pong) -> {
+					log.fine("server " + PATH + " got pong");
+					pongCounter.incrementAndGet();
+					pingPongPlayer.onMessage(pong);
+				});
 				try {
 					assertEquals("there should be 1 registered connection after adding",
 							1, service.getNumberOfConnections());
