@@ -8,9 +8,7 @@ import javax.websocket.*;
 
 
 
-/**
- * Some static helper functions related to {@link Endpoint}s.
- */
+/** Some static helper functions related to {@link Endpoint}s. */
 public interface EndpointUtils {
 
 
@@ -55,13 +53,13 @@ public interface EndpointUtils {
 		String endpointMethodName
 	) {
 		if (
-			method.getAnnotation(annotationClass) != null
-			&& ! Endpoint.class.isAssignableFrom(method.getDeclaringClass())
+			method.isAnnotationPresent(annotationClass)
+			&& !Endpoint.class.isAssignableFrom(method.getDeclaringClass())
 		) {
 			return true;
 		}
 
-		if ( ! method.getName().equals(endpointMethodName)) return false;
+		if ( !method.getName().equals(endpointMethodName)) return false;
 		try {
 			Endpoint.class.getMethod(endpointMethodName, method.getParameterTypes());
 			return true;
