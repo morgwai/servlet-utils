@@ -153,7 +153,7 @@ public class WebsocketPingerService {
 	 */
 	public void removeConnection(Session connection) {
 		final var pingPongPlayer = connectionPingPongPlayers.remove(connection);
-		pingPongPlayer.deregister();
+		if (pingPongPlayer != null) pingPongPlayer.deregister();
 	}
 
 

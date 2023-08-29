@@ -2,6 +2,7 @@
 package pl.morgwai.base.servlet.utils;
 
 import java.io.IOException;
+import java.lang.reflect.*;
 import java.net.CookieManager;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -450,6 +451,19 @@ public class WebsocketPingerServiceTests {
 			assertTrue("there should be no remaining connections in the service",
 					service.stop().isEmpty());
 		}
+	}
+
+
+
+	@Test
+	public void testRemoveUnregisteredConnection() {
+		final var service = new WebsocketPingerService(1, false);
+		final InvocationHandler handler =
+				(proxy, method, args) -> method.getDeclaringClass().equals(Object.class)
+						? method.invoke(this, args) : null;
+		final Session connectionMock = (Session) Proxy.newProxyInstance(
+				getClass().getClassLoader(), new Class[]{Session.class}, handler);
+		service.removeConnection(connectionMock);
 	}
 
 
