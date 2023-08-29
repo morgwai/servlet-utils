@@ -419,12 +419,15 @@ public class WebsocketPingerServiceTests {
 					.map(PingPongPlayer.class::cast)
 					.findFirst()
 					.orElseThrow();
+				final var decoratedHandler = new MessageHandler.Whole<PongMessage>() {
+					@Override public void onMessage(PongMessage pong) {
+						log.fine("server " + PATH + " got pong");
+						pongCounter.incrementAndGet();
+						pingPongPlayer.onMessage(pong);
+					}
+				};
 				serverEndpoint.connection.removeMessageHandler(pingPongPlayer);
-				serverEndpoint.connection.addMessageHandler(PongMessage.class, (pong) -> {
-					log.fine("server " + PATH + " got pong");
-					pongCounter.incrementAndGet();
-					pingPongPlayer.onMessage(pong);
-				});
+				serverEndpoint.connection.addMessageHandler(decoratedHandler);
 				try {
 					assertEquals("there should be 1 registered connection after adding",
 							1, service.getNumberOfConnections());
@@ -432,12 +435,16 @@ public class WebsocketPingerServiceTests {
 				} catch (InterruptedException e) {
 					fail("test interrupted");
 				} finally {
+					serverEndpoint.connection.removeMessageHandler(decoratedHandler);
+					serverEndpoint.connection.addMessageHandler(pingPongPlayer);
 					service.removeConnection(serverEndpoint.connection);
 				}
 				assertEquals("correct number of pongs should be received within the timeframe",
 						NUM_EXPECTED_PONGS, pongCounter.get());
 				assertEquals("there should be no registered connection after removing",
 						0, service.getNumberOfConnections());
+				assertTrue("pong handler should be removed",
+						serverEndpoint.connection.getMessageHandlers().isEmpty());
 			});
 		} finally {
 			assertTrue("there should be no remaining connections in the service",

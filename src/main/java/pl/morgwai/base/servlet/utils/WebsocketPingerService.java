@@ -153,7 +153,7 @@ public class WebsocketPingerService {
 	 */
 	public void removeConnection(Session connection) {
 		final var pingPongPlayer = connectionPingPongPlayers.remove(connection);
-		if ( !keepAliveOnly) pingPongPlayer.deregister();
+		pingPongPlayer.deregister();
 	}
 
 
@@ -188,11 +188,7 @@ public class WebsocketPingerService {
 	public Set<Session> stop() {
 		pingingTask.cancel(true);
 		scheduler.shutdown();
-		if ( !keepAliveOnly) {
-			for (var pingPongPlayer: connectionPingPongPlayers.values()) {
-				pingPongPlayer.deregister();
-			}
-		}
+		for (var pingPongPlayer: connectionPingPongPlayers.values()) pingPongPlayer.deregister();
 		try {
 			scheduler.awaitTermination(500L, TimeUnit.MILLISECONDS);
 		} catch (InterruptedException ignored) {}
