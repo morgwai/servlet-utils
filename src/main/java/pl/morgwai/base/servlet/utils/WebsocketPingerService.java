@@ -140,9 +140,10 @@ public class WebsocketPingerService {
 	 * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig)}.
 	 */
 	public void addConnection(Session connection) {
-		final PingPongPlayer pingPongPlayer;
-		pingPongPlayer = new PingPongPlayer(connection, failureLimit, synchronizeSending);
-		connectionPingPongPlayers.put(connection, pingPongPlayer);
+		connectionPingPongPlayers.put(
+			connection,
+			new PingPongPlayer(connection, failureLimit, synchronizeSending)
+		);
 	}
 
 
