@@ -176,9 +176,11 @@ public class WebsocketPingerService {
 
 	/** {@link #pingingTask} */
 	void pingAllConnections() {
+		final var connectionIterator = connectionPingPongPlayers.keySet().iterator();
+		if ( !connectionIterator.hasNext()) return;
 		final var pingData = new byte[pingSize];
 		if (keepAliveOnly) {
-			pingData[0] = 69;
+			pingData[0] = (byte) connectionIterator.next().hashCode();
 		} else {
 			random.nextBytes(pingData);
 		}
