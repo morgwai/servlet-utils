@@ -438,7 +438,8 @@ public class WebsocketPingerServiceTests {
 				} finally {
 					serverEndpoint.connection.removeMessageHandler(decoratedHandler);
 					serverEndpoint.connection.addMessageHandler(pingPongPlayer);
-					service.removeConnection(serverEndpoint.connection);
+					assertTrue("registered connection should indeed be removed",
+							service.removeConnection(serverEndpoint.connection));
 				}
 				assertEquals("correct number of pongs should be received within the timeframe",
 						NUM_EXPECTED_PONGS, pongCounter.get());
@@ -463,7 +464,8 @@ public class WebsocketPingerServiceTests {
 						? method.invoke(this, args) : null;
 		final Session connectionMock = (Session) Proxy.newProxyInstance(
 				getClass().getClassLoader(), new Class[]{Session.class}, handler);
-		service.removeConnection(connectionMock);
+		assertFalse("removing unregistered connection should indicate no action took place",
+				service.removeConnection(connectionMock));
 	}
 
 

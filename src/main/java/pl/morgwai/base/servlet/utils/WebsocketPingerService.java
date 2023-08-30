@@ -149,12 +149,20 @@ public class WebsocketPingerService {
 
 
 	/**
-	 * Deregisters {@code connection} from this service. Usually called in
-	 * {@link javax.websocket.Endpoint#onClose(Session, CloseReason)}.
+	 * Removes {@code connection} from this service, so it will not be pinged anymore. Usually
+	 * called in {@link javax.websocket.Endpoint#onClose(Session, CloseReason)}.
+	 * @return {@code true} if {@code connection} had been {@link #addConnection(Session) added} to
+	 *     this service before and has been successfully removed by this method, {@code false} if it
+	 *     had not been added and no action has taken place.
 	 */
-	public void removeConnection(Session connection) {
+	public boolean removeConnection(Session connection) {
 		final var pingPongPlayer = connectionPingPongPlayers.remove(connection);
-		if (pingPongPlayer != null) pingPongPlayer.deregister();
+		if (pingPongPlayer != null) {
+			pingPongPlayer.deregister();
+			return true;
+		} else {
+			return false;
+		}
 	}
 
 
