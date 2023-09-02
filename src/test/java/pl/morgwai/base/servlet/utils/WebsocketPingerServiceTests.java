@@ -257,8 +257,8 @@ public class WebsocketPingerServiceTests {
 
 
 	@Test
-	public void testPingPong() throws Exception {
-		final var PATH = "/testPingPong";
+	public void testServerPingPong() throws Exception {
+		final var PATH = "/testServerPingPong";
 		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
 			final var postPingVerificationsDone = new CountDownLatch(1);
 			final var pongReceived = new CountDownLatch(1);
@@ -475,6 +475,48 @@ public class WebsocketPingerServiceTests {
 				getClass().getClassLoader(), new Class[]{Session.class}, handler);
 		assertFalse("removing unregistered connection should indicate no action took place",
 				service.removeConnection(connectionMock));
+	}
+
+
+
+	@Test
+	public void testClientPingPong() throws Exception {
+		final var PATH = "/testClientPingPong";
+		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
+			final var postPingVerificationsDone = new CountDownLatch(1);
+			final var pongReceived = new CountDownLatch(1);
+			final var pingPongPlayer = new PingPongPlayer(clientEndpoint.connection, 2, false);
+			clientEndpoint.connection.removeMessageHandler(pingPongPlayer);
+			clientEndpoint.connection.addMessageHandler(PongMessage.class, (pong) -> {
+				log.fine("client " + PATH + " got pong, forwarding");
+				try {
+					if ( !postPingVerificationsDone.await(100L, TimeUnit.MILLISECONDS)) {
+						fail("post ping verifications should take just few ms");
+					}
+				} catch (InterruptedException ignored) {}
+				pingPongPlayer.onMessage(pong);
+				pongReceived.countDown();
+			});
+			pingPongPlayer.failureCount = 1;
+
+			pingPongPlayer.sendPing("testPingData".getBytes(StandardCharsets.UTF_8));
+			try {
+				assertTrue("pingPongPlayer should be awaiting for pong",
+						pingPongPlayer.awaitingPong);
+			} finally {
+				postPingVerificationsDone.countDown();
+			}
+			try {
+				if ( !pongReceived.await(100L, TimeUnit.MILLISECONDS)) {
+					fail("pong should be received");
+				}
+			} catch (InterruptedException e) {
+				fail("test interrupted");
+			}
+			assertEquals("failure count should be reset", 0, pingPongPlayer.failureCount);
+			assertFalse("pingPongPlayer should not be awaiting for pong anymore",
+					pingPongPlayer.awaitingPong);
+		});
 	}
 
 
