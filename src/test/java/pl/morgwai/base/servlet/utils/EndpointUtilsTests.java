@@ -22,8 +22,8 @@ public class EndpointUtilsTests {
 		final var onClose = ExtendingEndpoint.class.getMethod(
 				"onClose", Session.class, CloseReason.class);
 		final var someOtherMethod = ExtendingEndpoint.class.getMethod("someOtherMethod");
-		final var fakeOnOpen = ExtendingEndpoint.class.getMethod("fakeOnOpen", Session.class);
-		final var fakeOnClose = ExtendingEndpoint.class.getMethod("fakeOnClose", CloseReason.class);
+		final var fakeOnOpen = ExtendingEndpoint.class.getMethod("onOpen", Session.class);
+		final var fakeOnClose = ExtendingEndpoint.class.getMethod("onClose", CloseReason.class);
 		assertTrue(isOnClose(onClose));
 		assertFalse(isOnClose(onOpen));
 		assertFalse(isOnOpen(someOtherMethod));
@@ -57,8 +57,8 @@ class ExtendingEndpoint extends Endpoint {
 	@Override public void onOpen(Session session, EndpointConfig config) {}
 	@Override public void onClose(Session session, CloseReason closeReason) {}
 	public void someOtherMethod() {}
-	@OnOpen public void fakeOnOpen(Session session) {}
-	@OnClose public void fakeOnClose(CloseReason closeReason) {}
+	@OnOpen public void onOpen(Session session) {}
+	@OnClose public void onClose(CloseReason closeReason) {}
 }
 
 
