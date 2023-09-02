@@ -15,18 +15,19 @@ import javax.websocket.RemoteEndpoint.Async;
 
 
 /**
- * Automatically pings and handles pongs from websocket connections. Depending on constructor used,
- * operates in either {@link #WebsocketPingerService(int, int, int, boolean) verify-pongs mode} or
- * {@link #WebsocketPingerService(int, boolean) keep-alive-only mode}.
+ * Automatically pings and handles pongs from websocket {@link Session connections}. Depending on
+ * constructor used, operates in either {@link #WebsocketPingerService(int, int, int, boolean)
+ * verify-pongs mode} or {@link #WebsocketPingerService(int, boolean) keep-alive-only mode}. The
+ * service can be used both on a client and a server side.
  * <p>
- * Instances are usually created at app startup and stored in a location easily reachable
- * for endpoint instances (for example as a {@code ServletContext} attribute).</p>
+ * Instances are usually created at app startups and stored in locations easily reachable for
+ * {@code Endpoint} instances or the code that manages them (for example as a
+ * {@code ServletContext} attribute, a member variable in a class that creates client connections or
+ * on some static var).<br/>
+ * At an app shutdown {@link #stop()} should be called to terminate the pinging thread.</p>
  * <p>
- * Endpoint instances should register themselves for pinging in their
- * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig)} method using
- * {@link #addConnection(Session)} and deregister in
- * {@link javax.websocket.Endpoint#onClose(Session, CloseReason)} using
- * {@link #removeConnection(Session)}.</p>
+ * Connections can be registered for pinging using {@link #addConnection(Session)}
+ * and deregister using {@link #removeConnection(Session)}.</p>
  */
 public class WebsocketPingerService {
 
@@ -137,7 +138,7 @@ public class WebsocketPingerService {
 
 	/**
 	 * Registers {@code connection} for pinging by this service. Usually called in
-	 * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig)}.
+	 * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig) onOpen(...)}.
 	 */
 	public void addConnection(Session connection) {
 		connectionPingPongPlayers.put(
@@ -150,7 +151,7 @@ public class WebsocketPingerService {
 
 	/**
 	 * Removes {@code connection} from this service, so it will not be pinged anymore. Usually
-	 * called in {@link javax.websocket.Endpoint#onClose(Session, CloseReason)}.
+	 * called in {@link javax.websocket.Endpoint#onClose(Session, CloseReason) onClose(...)}.
 	 * @return {@code true} if {@code connection} had been {@link #addConnection(Session) added} to
 	 *     this service before and has been successfully removed by this method, {@code false} if it
 	 *     had not been added and no action has taken place.
