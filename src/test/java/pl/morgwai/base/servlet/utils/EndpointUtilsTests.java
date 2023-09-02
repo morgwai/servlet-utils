@@ -24,7 +24,9 @@ public class EndpointUtilsTests {
 		final var someOtherMethod = ExtendingEndpoint.class.getMethod("someOtherMethod");
 		final var fakeOnOpen = ExtendingEndpoint.class.getMethod("onOpen", Session.class);
 		final var fakeOnClose = ExtendingEndpoint.class.getMethod("onClose", CloseReason.class);
+		assertTrue(isOnOpen(onOpen));
 		assertTrue(isOnClose(onClose));
+		assertFalse(isOnOpen(onClose));
 		assertFalse(isOnClose(onOpen));
 		assertFalse(isOnOpen(someOtherMethod));
 		assertFalse(isOnClose(someOtherMethod));
