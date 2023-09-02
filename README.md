@@ -1,6 +1,6 @@
 # Servlet utils
 
-Some helpful classes when developing servlets.<br/>
+Some helpful classes when developing `Servlet`s and websocket `Endpoint`s.<br/>
 <br/>
 **latest release: 3.1**<br/>
 [javax flavor](https://search.maven.org/artifact/pl.morgwai.base/servlet-utils/3.1-javax/jar)
