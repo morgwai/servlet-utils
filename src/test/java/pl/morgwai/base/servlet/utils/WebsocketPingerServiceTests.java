@@ -297,8 +297,8 @@ public class WebsocketPingerServiceTests {
 
 
 	@Test
-	public void testKeepAliveFromClient() throws Throwable {
-		final var PATH = "/testKeepAliveFromClient";
+	public void testKeepAlivePongFromClient() throws Throwable {
+		final var PATH = "/testKeepAlivePongFromClient";
 		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
 			final var pongReceived = new CountDownLatch(1);
 			final var pingPongPlayer = new PingPongPlayer(serverEndpoint.connection, 2, false);
