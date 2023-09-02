@@ -192,7 +192,7 @@ public class WebsocketPingerServiceTests {
 		boolean closeClientConnection,
 		CloseCode expectedClientCloseCode,
 		BiConsumer<ServerEndpoint, ClientEndpoint> test
-	) throws Throwable {
+	) throws Exception {
 		server.addEndpoint(ServerEndpoint.class, path);
 		final var clientEndpoint = new ClientEndpoint();
 		final var url = URI.create(websocketUrl + path);
@@ -226,7 +226,7 @@ public class WebsocketPingerServiceTests {
 
 
 	@Test
-	public void testKeepAlive() throws Throwable {
+	public void testKeepAlive() throws Exception {
 		final var PATH = "/testKeepAlive";
 		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
 			final var pongReceived = new CountDownLatch(1);
@@ -257,7 +257,7 @@ public class WebsocketPingerServiceTests {
 
 
 	@Test
-	public void testPingPong() throws Throwable {
+	public void testPingPong() throws Exception {
 		final var PATH = "/testPingPong";
 		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
 			final var postPingVerificationsDone = new CountDownLatch(1);
@@ -267,7 +267,9 @@ public class WebsocketPingerServiceTests {
 			serverEndpoint.connection.addMessageHandler(PongMessage.class, (pong) -> {
 				log.fine("server " + PATH + " got pong, forwarding");
 				try {
-					postPingVerificationsDone.await(100L, TimeUnit.MILLISECONDS);
+					if ( !postPingVerificationsDone.await(100L, TimeUnit.MILLISECONDS)) {
+						fail("post ping verifications should take just few ms");
+					}
 				} catch (InterruptedException ignored) {}
 				pingPongPlayer.onMessage(pong);
 				pongReceived.countDown();
@@ -297,7 +299,7 @@ public class WebsocketPingerServiceTests {
 
 
 	@Test
-	public void testKeepAlivePongFromClient() throws Throwable {
+	public void testKeepAlivePongFromClient() throws Exception {
 		final var PATH = "/testKeepAlivePongFromClient";
 		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
 			final var pongReceived = new CountDownLatch(1);
@@ -329,7 +331,7 @@ public class WebsocketPingerServiceTests {
 
 
 	@Test
-	public void testMalformedPong() throws Throwable {
+	public void testMalformedPong() throws Exception {
 		final var PATH = "/testMalformedPong";
 		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
 			final var pongReceived = new CountDownLatch(1);
@@ -360,7 +362,7 @@ public class WebsocketPingerServiceTests {
 
 
 	@Test
-	public void testTimedOutPong() throws Throwable {
+	public void testTimedOutPong() throws Exception {
 		final var PATH = "/testTimedOutPong";
 		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
 			final var pingPongPlayer = new PingPongPlayer(serverEndpoint.connection, 2, false);
@@ -381,7 +383,7 @@ public class WebsocketPingerServiceTests {
 
 
 	@Test
-	public void testFailureLimitExceeded() throws Throwable {
+	public void testFailureLimitExceeded() throws Exception {
 		final var PATH = "/testFailureLimitExceeded";
 		performTest(PATH, false, CloseCodes.PROTOCOL_ERROR, (serverEndpoint, clientEndpoint) -> {
 			final var pongReceived = new CountDownLatch(1);
@@ -412,7 +414,7 @@ public class WebsocketPingerServiceTests {
 
 
 	@Test
-	public void testServiceKeepAliveRate() throws Throwable {
+	public void testServiceKeepAliveRate() throws Exception {
 		final var PATH = "/testServiceKeepAliveRate";
 		final int NUM_EXPECTED_PONGS = 3;
 		final var service = new WebsocketPingerService(1, false);
