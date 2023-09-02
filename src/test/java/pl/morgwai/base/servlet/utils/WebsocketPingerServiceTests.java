@@ -104,17 +104,31 @@ public class WebsocketPingerServiceTests {
 
 		/** Switched in {@link #onClose(Session, CloseReason)}. */
 		protected CountDownLatch closed = new CountDownLatch(1);
+		/** Set in {@link #onClose(Session, CloseReason)}. */
+		protected CloseCode closeCode;
+
+
 
 		@Override
 		public void onOpen(Session connection, EndpointConfig config) {
 			this.connection = connection;
+			final var url = connection.getRequestURI().toString();
+			this.id = (isServer() ? "server " : "client ") + url.substring(url.lastIndexOf('/'));
+			log.fine(id + " got onOpen(...)");
 		}
+
+		protected abstract boolean isServer();
+
+
 
 		@Override
 		public void onClose(Session session, CloseReason closeReason) {
 			log.fine(id + " got onClose(...), reason: " + closeReason.getCloseCode());
+			closeCode = closeReason.getCloseCode();
 			closed.countDown();
 		}
+
+
 
 		@Override
 		public void onError(Session session, Throwable error) {
@@ -127,16 +141,22 @@ public class WebsocketPingerServiceTests {
 
 	public static class ServerEndpoint extends BaseEndpoint {
 
+
+
+		@Override
+		protected boolean isServer() {
+			return true;
+		}
+
+
+
 		/**
-		 * Calculates its {@link #id} from the request URI, stores itself into
-		 * {@link #serverEndpointInstance} and switches its {@link #serverEndpointCreated}.
+		 * Stores itself into {@link #serverEndpointInstance} and switches its
+		 * {@link #serverEndpointCreated}.
 		 */
 		@Override
 		public void onOpen(Session connection, EndpointConfig config) {
 			super.onOpen(connection, config);
-			final var url = connection.getRequestURI().toString();
-			this.id = "server " + url.substring(url.lastIndexOf('/'));
-			log.fine(id + " got onOpen(...)");
 			serverEndpointInstance.put(connection.getRequestURI(), this);
 			serverEndpointCreated.get(connection.getRequestURI()).countDown();
 		}
@@ -146,22 +166,9 @@ public class WebsocketPingerServiceTests {
 
 	public static class ClientEndpoint extends BaseEndpoint {
 
-		CloseCode closeCode;
-
-		public ClientEndpoint(String path) {
-			this.id = "client " + path;
-		}
-
 		@Override
-		public void onOpen(Session connection, EndpointConfig config) {
-			super.onOpen(connection, config);
-			log.fine(id + " got onOpen(...)");
-		}
-
-		@Override
-		public void onClose(Session session, CloseReason closeReason) {
-			closeCode = closeReason.getCloseCode();
-			super.onClose(session, closeReason);
+		protected boolean isServer() {
+			return false;
 		}
 	}
 
@@ -187,7 +194,7 @@ public class WebsocketPingerServiceTests {
 		BiConsumer<ServerEndpoint, ClientEndpoint> test
 	) throws Throwable {
 		server.addEndpoint(ServerEndpoint.class, path);
-		final var clientEndpoint = new ClientEndpoint(path);
+		final var clientEndpoint = new ClientEndpoint();
 		final var url = URI.create(websocketUrl + path);
 		serverEndpointCreated.put(url, new CountDownLatch(1));
 		final ServerEndpoint serverEndpoint;
