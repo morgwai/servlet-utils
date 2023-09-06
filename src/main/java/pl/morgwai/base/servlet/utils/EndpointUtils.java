@@ -4,7 +4,7 @@ package pl.morgwai.base.servlet.utils;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 
-import javax.websocket.*;
+import jakarta.websocket.*;
 
 
 
