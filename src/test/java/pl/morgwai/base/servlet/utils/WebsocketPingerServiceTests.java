@@ -477,10 +477,14 @@ public class WebsocketPingerServiceTests {
 		final InvocationHandler handler =
 				(proxy, method, args) -> method.getDeclaringClass().equals(Object.class)
 						? method.invoke(this, args) : null;
-		final Session connectionMock = (Session) Proxy.newProxyInstance(
-				getClass().getClassLoader(), new Class[]{Session.class}, handler);
-		assertFalse("removing unregistered connection should indicate no action took place",
-				service.removeConnection(connectionMock));
+		try {
+			final Session connectionMock = (Session) Proxy.newProxyInstance(
+					getClass().getClassLoader(), new Class[]{Session.class}, handler);
+			assertFalse("removing unregistered connection should indicate no action took place",
+					service.removeConnection(connectionMock));
+		} finally {
+			service.stop();
+		}
 	}
 
 
