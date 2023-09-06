@@ -168,6 +168,16 @@ public class WebsocketPingerService {
 
 
 
+	/**
+	 * Tells whether {@code connection} was {@link #addConnection(Session) registered} in this
+	 * service.
+	 */
+	public boolean containsConnection(Session connection) {
+		return connectionPingPongPlayers.containsKey(connection);
+	}
+
+
+
 	/** Returns the number of currently registered connections. */
 	public int getNumberOfConnections() {
 		return connectionPingPongPlayers.size();

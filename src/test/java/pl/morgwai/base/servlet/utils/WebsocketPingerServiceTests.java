@@ -418,12 +418,15 @@ public class WebsocketPingerServiceTests {
 		final var PATH = "/testServiceKeepAliveRate";
 		final int NUM_EXPECTED_PONGS = 3;
 		final var service = new WebsocketPingerService(1, false);
+		boolean serviceEmpty;
 		try {
 			performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
 				final var pongCounter = new AtomicInteger(0);
 				assertEquals("there should be no registered connection initially",
 						0, service.getNumberOfConnections());
 				service.addConnection(serverEndpoint.connection);
+				assertTrue("connection should be successfully registered",
+						service.containsConnection(serverEndpoint.connection));
 				final var pingPongPlayer = serverEndpoint.connection.getMessageHandlers().stream()
 					.filter(PingPongPlayer.class::isInstance)
 					.map(PingPongPlayer.class::cast)
@@ -447,20 +450,23 @@ public class WebsocketPingerServiceTests {
 				} finally {
 					serverEndpoint.connection.removeMessageHandler(decoratedHandler);
 					serverEndpoint.connection.addMessageHandler(pingPongPlayer);
-					assertTrue("registered connection should indeed be removed",
+					assertTrue("connection removal should succeed",
 							service.removeConnection(serverEndpoint.connection));
+					assertFalse("service should indicate that connection was removed",
+							service.containsConnection(serverEndpoint.connection));
+					assertEquals("there should be no registered connection after removing",
+							0, service.getNumberOfConnections());
+					assertTrue("pong handler should be removed",
+							serverEndpoint.connection.getMessageHandlers().isEmpty());
 				}
 				assertEquals("correct number of pongs should be received within the timeframe",
 						NUM_EXPECTED_PONGS, pongCounter.get());
-				assertEquals("there should be no registered connection after removing",
-						0, service.getNumberOfConnections());
-				assertTrue("pong handler should be removed",
-						serverEndpoint.connection.getMessageHandlers().isEmpty());
 			});
 		} finally {
-			assertTrue("there should be no remaining connections in the service",
-					service.stop().isEmpty());
+			serviceEmpty = service.stop().isEmpty();
 		}
+		// verify after finally block to not suppress earlier errors
+		assertTrue("there should be no remaining connections in the service", serviceEmpty);
 	}
 
 
