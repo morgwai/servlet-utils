@@ -46,7 +46,6 @@ public class WebsocketPingerService {
 	final int failureLimit;
 
 	final boolean synchronizeSending;
-	final boolean keepAliveOnly;
 
 	final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 	final ScheduledFuture<?> pingingTask;
@@ -56,40 +55,26 @@ public class WebsocketPingerService {
 
 
 
-	/** Low-level constructor for both modes */
-	private WebsocketPingerService(
-		boolean keepAliveOnly,
-		int intervalSeconds,
-		int failureLimit,
-		boolean synchronizeSending
-	) {
-		if ( ( !keepAliveOnly) && failureLimit < 0) {
-			throw new IllegalArgumentException("failure limit cannot be negative");
-		}
-		this.keepAliveOnly = keepAliveOnly;
-		this.intervalSeconds = intervalSeconds;
-		this.failureLimit = failureLimit;
-		this.synchronizeSending = synchronizeSending;
-		pingingTask = scheduler.scheduleAtFixedRate(
-				this::pingAllConnections, 0L, intervalSeconds, TimeUnit.SECONDS);
-	}
-
-
-
 	/**
-	 * Configures and starts the service in verify-pongs mode: timely pongs are expected and their
-	 * contents is verified to match corresponding pings.
+	 * Configures and starts the service in verify-pongs mode: timely matching pongs are expected.
 	 * @param intervalSeconds interval between pings and also timeout for pongs.
-	 * @param failureLimit limit of lost, malformed or timed out pongs after which the given
-	 *     connection is closed. Each valid, timely pong resets connection's failure counter.
+	 * @param failureLimit limit of lost or timed out pongs after which the given
+	 *     connection is closed. Each matching, timely pong resets connection's failure counter.
 	 * @param synchronizeSending whether to synchronize packet sending on the given connection.
 	 *     Whether it is necessary depends on the implementation of the container. For example it is
 	 *     not necessary on Jetty, but it is on Tomcat: see
 	 *     <a href="https://bz.apache.org/bugzilla/show_bug.cgi?id=56026">this bug report</a>.
 	 */
 	public WebsocketPingerService(
-			int intervalSeconds, int failureLimit, boolean synchronizeSending) {
-		this(false, intervalSeconds, failureLimit, synchronizeSending);
+		int intervalSeconds,
+		int failureLimit,
+		boolean synchronizeSending
+	) {
+		this.intervalSeconds = intervalSeconds;
+		this.failureLimit = failureLimit;
+		this.synchronizeSending = synchronizeSending;
+		pingingTask = scheduler.scheduleAtFixedRate(
+				this::pingAllConnections, 0L, intervalSeconds, TimeUnit.SECONDS);
 	}
 
 	/**
@@ -116,7 +101,7 @@ public class WebsocketPingerService {
 	 * The params have the same meaning as in {@link #WebsocketPingerService(int, int, boolean)}.
 	 */
 	public WebsocketPingerService(int intervalSeconds, boolean synchronizeSending) {
-		this(true, intervalSeconds, -1, synchronizeSending);
+		this(intervalSeconds, -1, synchronizeSending);
 	}
 
 	/**
@@ -281,36 +266,25 @@ public class WebsocketPingerService {
 			}
 		}
 
-
-
-		@Override
-		public synchronized void onMessage(PongMessage pong) {
-			if (rttObserver != null && pingNanos != null) {
-				rttObserver.accept(connection, System.nanoTime() - pingNanos);
-			}
-			if (failureLimit < 0 || pingNanos == null) {
-				// keep-alive-only from either side
-				pingNanos = null;
-				return;
-			}
-			if (pong.getApplicationData().equals(pingDataBuffer)) {
-				failureCount = 0;
-			} else {
-				failureCount++;
-				if (failureCount > failureLimit) closeFailedConnection();
-			}
-			pingNanos = null;
-		}
-
-
-
-		/** Called if ping {@link #failureLimit} is exceeded or if {@link IOException} occurs. */
 		private void closeFailedConnection() {
 			if (log.isLoggable(Level.FINE)) log.fine("failure on connection " + connection.getId());
 			try {
 				connection.close(new CloseReason(
-						CloseCodes.PROTOCOL_ERROR, "communication failure"));
+					CloseCodes.PROTOCOL_ERROR, "communication failure"));
 			} catch (IOException ignored) {}
+		}
+
+
+
+		@Override
+		public synchronized void onMessage(PongMessage pong) {
+			if (pong.getApplicationData().equals(pingDataBuffer)) {
+				if (rttObserver != null) {
+					rttObserver.accept(connection, System.nanoTime() - pingNanos);
+				}
+				pingNanos = null;
+				failureCount = 0;
+			}
 		}
 
 
