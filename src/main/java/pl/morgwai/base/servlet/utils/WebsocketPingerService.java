@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.BiConsumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -28,6 +29,9 @@ import javax.websocket.RemoteEndpoint.Async;
  * <p>
  * Connections can be registered for pinging using {@link #addConnection(Session)}
  * and deregister using {@link #removeConnection(Session)}.</p>
+ * <p>
+ * If round-trip time discovery is desired, {@link #addConnection(Session, BiConsumer)} may be used
+ * instead to receive RTT reports on each pong.</p>
  */
 public class WebsocketPingerService {
 
@@ -137,14 +141,24 @@ public class WebsocketPingerService {
 
 
 	/**
+	 * Registers {@code connection} for pinging by this service and {@code rttObserver} that will
+	 * receive round-trip time reports each time a matched pong arrives on {@code connection}.
+	 * Usually called in
+	 * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig) onOpen(...)}.
+	 */
+	public void addConnection(Session connection, BiConsumer<Session, Long> rttObserver) {
+		connectionPingPongPlayers.put(
+			connection,
+			new PingPongPlayer(connection, failureLimit, synchronizeSending, rttObserver)
+		);
+	}
+
+	/**
 	 * Registers {@code connection} for pinging by this service. Usually called in
 	 * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig) onOpen(...)}.
 	 */
 	public void addConnection(Session connection) {
-		connectionPingPongPlayers.put(
-			connection,
-			new PingPongPlayer(connection, failureLimit, synchronizeSending)
-		);
+		addConnection(connection, null);
 	}
 
 
@@ -235,17 +249,24 @@ public class WebsocketPingerService {
 		final Async connector;
 		final int failureLimit;  // negative value means keep-alive-only mode
 		final boolean synchronizeSending;
+		final BiConsumer<Session, Long> rttObserver;
 
 		ByteBuffer pingDataBuffer;
 		int failureCount = 0;
-		boolean awaitingPong = false;
+		Long pingNanos = null;
 
 
 
-		PingPongPlayer(Session connection, int failureLimit, boolean synchronizeSending) {
+		PingPongPlayer(
+			Session connection,
+			int failureLimit,
+			boolean synchronizeSending,
+			BiConsumer<Session, Long> rttObserver
+		) {
 			this.connection = connection;
 			this.connector = connection.getAsyncRemote();
 			this.synchronizeSending = synchronizeSending;
+			this.rttObserver = rttObserver;
 			this.failureLimit = failureLimit;
 			connection.addMessageHandler(PongMessage.class, this);
 		}
@@ -254,7 +275,7 @@ public class WebsocketPingerService {
 
 		/** Called by the service's worker thread. */
 		synchronized void sendPing(byte[] pingData) {
-			if (awaitingPong) {  // the previous ping timed out
+			if (failureLimit >= 0 && pingNanos != null) {  // the previous ping timed out
 				failureCount++;
 				if (failureCount > failureLimit) {
 					closeFailedConnection();
@@ -270,8 +291,8 @@ public class WebsocketPingerService {
 				} else {
 					connector.sendPing(pingDataBuffer);
 				}
+				pingNanos = System.nanoTime();
 				pingDataBuffer.rewind();
-				if (failureLimit >= 0) awaitingPong = true;
 			} catch (IOException e) {
 				closeFailedConnection();
 			}
@@ -281,14 +302,21 @@ public class WebsocketPingerService {
 
 		@Override
 		public synchronized void onMessage(PongMessage pong) {
-			if (failureLimit < 0 || !awaitingPong) return;  // keep-alive only
-			awaitingPong = false;
+			if (rttObserver != null && pingNanos != null) {
+				rttObserver.accept(connection, System.nanoTime() - pingNanos);
+			}
+			if (failureLimit < 0 || pingNanos == null) {
+				// keep-alive-only from either side
+				pingNanos = null;
+				return;
+			}
 			if (pong.getApplicationData().equals(pingDataBuffer)) {
 				failureCount = 0;
 			} else {
 				failureCount++;
 				if (failureCount > failureLimit) closeFailedConnection();
 			}
+			pingNanos = null;
 		}
 
 
