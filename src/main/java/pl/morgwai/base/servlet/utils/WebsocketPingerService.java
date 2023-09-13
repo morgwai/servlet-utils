@@ -17,7 +17,7 @@ import javax.websocket.RemoteEndpoint.Async;
 
 /**
  * Automatically pings and handles pongs from websocket {@link Session connections}. Depending on
- * constructor used, operates in either {@link #WebsocketPingerService(int, int, int, boolean)
+ * constructor used, operates in either {@link #WebsocketPingerService(int, int, boolean)
  * verify-pongs mode} or {@link #WebsocketPingerService(int, boolean) keep-alive-only mode}. The
  * service can be used both on a client and a server side.
  * <p>
@@ -45,10 +45,6 @@ public class WebsocketPingerService {
 	public static final int DEFAULT_FAILURE_LIMIT = 4;
 	final int failureLimit;
 
-	/** Economic value to reduce use of {@link Random}. */
-	public static final int DEFAULT_PING_SIZE = 4;
-	final int pingSize;
-
 	final boolean synchronizeSending;
 	final boolean keepAliveOnly;
 
@@ -65,19 +61,14 @@ public class WebsocketPingerService {
 		boolean keepAliveOnly,
 		int intervalSeconds,
 		int failureLimit,
-		int pingSize,
 		boolean synchronizeSending
 	) {
-		if (pingSize > 125 || pingSize < 1) {
-			throw new IllegalArgumentException("ping size must be between 1 and 125");
-		}
 		if ( ( !keepAliveOnly) && failureLimit < 0) {
 			throw new IllegalArgumentException("failure limit cannot be negative");
 		}
 		this.keepAliveOnly = keepAliveOnly;
 		this.intervalSeconds = intervalSeconds;
 		this.failureLimit = failureLimit;
-		this.pingSize = pingSize;
 		this.synchronizeSending = synchronizeSending;
 		pingingTask = scheduler.scheduleAtFixedRate(
 				this::pingAllConnections, 0L, intervalSeconds, TimeUnit.SECONDS);
@@ -91,44 +82,41 @@ public class WebsocketPingerService {
 	 * @param intervalSeconds interval between pings and also timeout for pongs.
 	 * @param failureLimit limit of lost, malformed or timed out pongs after which the given
 	 *     connection is closed. Each valid, timely pong resets connection's failure counter.
-	 * @param pingSize size of the ping data to send. This comes from {@link Random}, so an economic
-	 *     value is recommended.
 	 * @param synchronizeSending whether to synchronize packet sending on the given connection.
 	 *     Whether it is necessary depends on the implementation of the container. For example it is
 	 *     not necessary on Jetty, but it is on Tomcat: see
 	 *     <a href="https://bz.apache.org/bugzilla/show_bug.cgi?id=56026">this bug report</a>.
 	 */
 	public WebsocketPingerService(
-			int intervalSeconds, int failureLimit, int pingSize, boolean synchronizeSending) {
-		this(false, intervalSeconds, failureLimit, pingSize, synchronizeSending);
+			int intervalSeconds, int failureLimit, boolean synchronizeSending) {
+		this(false, intervalSeconds, failureLimit, synchronizeSending);
 	}
 
 	/**
-	 * Calls {@link #WebsocketPingerService(int, int, int, boolean)
-	 * WebsocketPingerService(intervalSeconds, failureLimit, pingSize, false)} (ping-pong mode).
+	 * Calls {@link #WebsocketPingerService(int, int, boolean)
+	 * WebsocketPingerService(intervalSeconds, failureLimit, false)} (ping-pong mode).
 	 */
-	public WebsocketPingerService(int intervalSeconds, int failureLimit, int pingSize) {
-		this(intervalSeconds, failureLimit, pingSize, false);
+	public WebsocketPingerService(int intervalSeconds, int failureLimit) {
+		this(intervalSeconds, failureLimit, false);
 	}
 
 	/**
-	 * Calls {@link #WebsocketPingerService(int, int, int, boolean)
+	 * Calls {@link #WebsocketPingerService(int, int, boolean)
 	 * WebsocketPingerService}<code>({@link #DEFAULT_INTERVAL},
-	 * {@link #DEFAULT_FAILURE_LIMIT}, {@link #DEFAULT_PING_SIZE}, false)</code> (ping-pong mode).
+	 * {@link #DEFAULT_FAILURE_LIMIT}, false)</code> (ping-pong mode).
 	 */
 	public WebsocketPingerService() {
-		this(DEFAULT_INTERVAL, DEFAULT_FAILURE_LIMIT, DEFAULT_PING_SIZE, false);
+		this(DEFAULT_INTERVAL, DEFAULT_FAILURE_LIMIT, false);
 	}
 
 
 
 	/**
-	 * Configures and starts the service in keep-alive-only mode: just 1-byte ping is sent each time
-	 * and responses are not verified. The params have the same meaning as in
-	 * {@link #WebsocketPingerService(int, int, int, boolean)}.
+	 * Configures and starts the service in keep-alive-only mode: responses are not verified.
+	 * The params have the same meaning as in {@link #WebsocketPingerService(int, int, boolean)}.
 	 */
 	public WebsocketPingerService(int intervalSeconds, boolean synchronizeSending) {
-		this(true, intervalSeconds, -1, 1, synchronizeSending);
+		this(true, intervalSeconds, -1, synchronizeSending);
 	}
 
 	/**
@@ -201,14 +189,9 @@ public class WebsocketPingerService {
 
 	/** {@link #pingingTask} */
 	void pingAllConnections() {
-		final var connectionIterator = connectionPingPongPlayers.keySet().iterator();
-		if ( !connectionIterator.hasNext()) return;
-		final var pingData = new byte[pingSize];
-		if (keepAliveOnly) {
-			pingData[0] = (byte) connectionIterator.next().hashCode();
-		} else {
-			random.nextBytes(pingData);
-		}
+		if (connectionPingPongPlayers.isEmpty()) return;
+		final var pingData = new byte[8];
+		random.nextBytes(pingData);
 		for (var pingPongPlayer: connectionPingPongPlayers.values()) {
 			pingPongPlayer.sendPing(pingData);
 		}
