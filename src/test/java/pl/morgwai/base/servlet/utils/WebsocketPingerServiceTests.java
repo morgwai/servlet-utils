@@ -534,6 +534,7 @@ public class WebsocketPingerServiceTests {
 	static Level LOG_LEVEL = Level.WARNING;
 
 	static final Logger log = Logger.getLogger(WebsocketPingerServiceTests.class.getName());
+	static final Logger pingerLog = Logger.getLogger(WebsocketPingerService.class.getName());
 
 	@BeforeClass
 	public static void setupLogging() {
@@ -542,6 +543,7 @@ public class WebsocketPingerServiceTests {
 				WebsocketPingerServiceTests.class.getPackageName() + ".level"));
 		} catch (Exception ignored) {}
 		log.setLevel(LOG_LEVEL);
+		pingerLog.setLevel(LOG_LEVEL);
 		for (final var handler: Logger.getLogger("").getHandlers()) handler.setLevel(LOG_LEVEL);
 	}
 }
