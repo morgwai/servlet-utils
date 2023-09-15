@@ -472,9 +472,13 @@ public class WebsocketPingerServiceTests {
 	@Test
 	public void testRemoveUnregisteredConnection() {
 		final var service = new WebsocketPingerService(1, false);
-		final InvocationHandler handler =
-				(proxy, method, args) -> method.getDeclaringClass().equals(Object.class)
-						? method.invoke(this, args) : null;
+		final InvocationHandler handler = (proxy, method, args) -> {
+			if (method.getDeclaringClass().equals(Object.class)) {
+				return method.invoke(this, args);
+			} else {
+				throw new UnsupportedOperationException();
+			}
+		};
 		try {
 			final Session connectionMock = (Session) Proxy.newProxyInstance(
 					getClass().getClassLoader(), new Class[]{Session.class}, handler);
