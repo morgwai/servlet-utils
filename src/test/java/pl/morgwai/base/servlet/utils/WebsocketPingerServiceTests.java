@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.lang.reflect.*;
 import java.net.CookieManager;
 import java.net.URI;
-import java.net.http.HttpClient;
 import java.nio.ByteBuffer;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.charset.StandardCharsets;
@@ -37,7 +36,6 @@ public class WebsocketPingerServiceTests {
 
 	org.eclipse.jetty.client.HttpClient wsHttpClient;
 	WebSocketContainer clientWebsocketContainer;
-	HttpClient httpClient;
 	TestServer server;
 	int port;
 	String websocketUrl;
@@ -50,7 +48,6 @@ public class WebsocketPingerServiceTests {
 		wsHttpClient = new org.eclipse.jetty.client.HttpClient();
 		wsHttpClient.setCookieStore(cookieManager.getCookieStore());
 		clientWebsocketContainer = JavaxWebSocketClientContainerProvider.getContainer(wsHttpClient);
-		httpClient = HttpClient.newBuilder().cookieHandler(cookieManager).build();
 		server = new TestServer(0);
 		server.start();
 		port = ((ServerSocketChannel) server.getConnectors()[0].getTransport())
