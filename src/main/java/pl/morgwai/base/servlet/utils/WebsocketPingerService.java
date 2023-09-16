@@ -9,9 +9,9 @@ import java.util.function.BiConsumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import javax.websocket.*;
-import javax.websocket.CloseReason.CloseCodes;
-import javax.websocket.RemoteEndpoint.Async;
+import jakarta.websocket.*;
+import jakarta.websocket.CloseReason.CloseCodes;
+import jakarta.websocket.RemoteEndpoint.Async;
 
 
 
@@ -165,7 +165,7 @@ public class WebsocketPingerService {
 	 * Registers {@code connection} for pinging by this service and {@code rttObserver} that will
 	 * receive round-trip time reports each time a matched pong arrives on {@code connection}.
 	 * Usually called in
-	 * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig) onOpen(...)}.
+	 * {@link jakarta.websocket.Endpoint#onOpen(Session, jakarta.websocket.EndpointConfig) onOpen(...)}.
 	 */
 	public void addConnection(Session connection, BiConsumer<Session, Long> rttObserver) {
 		connectionPingPongPlayers.put(
@@ -176,7 +176,7 @@ public class WebsocketPingerService {
 
 	/**
 	 * Registers {@code connection} for pinging by this service. Usually called in
-	 * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig) onOpen(...)}.
+	 * {@link jakarta.websocket.Endpoint#onOpen(Session, jakarta.websocket.EndpointConfig) onOpen(...)}.
 	 */
 	public void addConnection(Session connection) {
 		addConnection(connection, null);
@@ -186,7 +186,7 @@ public class WebsocketPingerService {
 
 	/**
 	 * Removes {@code connection} from this service, so it will not be pinged anymore. Usually
-	 * called in {@link javax.websocket.Endpoint#onClose(Session, CloseReason) onClose(...)}.
+	 * called in {@link jakarta.websocket.Endpoint#onClose(Session, CloseReason) onClose(...)}.
 	 * @return {@code true} if {@code connection} had been {@link #addConnection(Session) added} to
 	 *     this service before and has been successfully removed by this method, {@code false} if it
 	 *     had not been added and no action has taken place.
