@@ -11,4 +11,6 @@ Some helpful classes when developing `Servlet`s and websocket `Endpoint`s.<br/>
 
 ## MAIN USER CLASSES
 
-For now just 1 class: a simple utility service that automatically pings and handles pongs from websocket connections: [WebsocketPingerService](src/main/java/pl/morgwai/base/servlet/utils/WebsocketPingerService.java) (can be used both on a server and a client side).
+For now just 1 class:
+### [WebsocketPingerService](https://javadoc.io/doc/pl.morgwai.base/servlet-utils/latest/pl/morgwai/base/servlet/utils/WebsocketPingerService.html)
+Simple utility service that automatically pings and handles pongs from websocket connections. May be used both on a server and a client side. Supports round-trip time discovery.
