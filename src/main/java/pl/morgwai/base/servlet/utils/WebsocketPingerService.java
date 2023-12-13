@@ -192,13 +192,7 @@ public class WebsocketPingerService {
 	 *     had not been added and no action has taken place.
 	 */
 	public boolean removeConnection(Session connection) {
-		final var pingPongPlayer = connectionPingPongPlayers.remove(connection);
-		if (pingPongPlayer != null) {
-			pingPongPlayer.deregister();
-			return true;
-		} else {
-			return false;
-		}
+		return connectionPingPongPlayers.remove(connection) != null;
 	}
 
 
@@ -337,7 +331,10 @@ public class WebsocketPingerService {
 
 
 
-		/** Removes pong handler. Called by the service when connection is deregistered. */
+		/**
+		 * Removes pong handler. Called by the service on connections remaining after
+		 * {@link #stop()}.
+		 */
 		void deregister() {
 			connection.removeMessageHandler(this);
 		}

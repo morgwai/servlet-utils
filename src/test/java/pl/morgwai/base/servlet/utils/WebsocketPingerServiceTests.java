@@ -451,8 +451,6 @@ public class WebsocketPingerServiceTests {
 							service.containsConnection(serverEndpoint.connection));
 					assertEquals("there should be no registered connection after removing",
 							0, service.getNumberOfConnections());
-					assertTrue("pong handler should be removed",
-							serverEndpoint.connection.getMessageHandlers().isEmpty());
 				}
 				assertEquals("correct number of pongs should be received within the timeframe",
 						NUM_EXPECTED_PONGS, pongCounter.get());
