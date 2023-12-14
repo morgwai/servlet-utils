@@ -1,9 +1,6 @@
 // Copyright (c) Piotr Morgwai Kotarbinski, Licensed under the Apache License, Version 2.0
 package pl.morgwai.base.servlet.utils.tests;
 
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
 import javax.websocket.DeploymentException;
@@ -23,11 +20,10 @@ public class TestServer extends org.eclipse.jetty.server.Server {
 	public static final String APP_PATH = "/test";
 
 	ServerContainer endpointContainer;
-	final CountDownLatch serverStarted = new CountDownLatch(1);
 
 
 
-	public TestServer(int port) {
+	public TestServer(int port) throws Exception {
 		super(port);
 		final var appHandler = new ServletContextHandler(ServletContextHandler.SESSIONS);
 		appHandler.setContextPath(APP_PATH);
@@ -35,8 +31,7 @@ public class TestServer extends org.eclipse.jetty.server.Server {
 			@Override public void contextInitialized(ServletContextEvent initializationEvent) {
 				endpointContainer = ((ServerContainer)
 						initializationEvent.getServletContext().getAttribute(
-								"javax.websocket.server.ServerContainer"));
-				serverStarted.countDown();
+								ServerContainer.class.getName()));
 			}
 		});
 		setHandler(appHandler);
@@ -45,15 +40,13 @@ public class TestServer extends org.eclipse.jetty.server.Server {
 			(servletContainer, websocketContainer) ->
 					websocketContainer.setDefaultMaxTextMessageBufferSize(1023)
 		);
+		start();
 	}
 
 
 
 	public void addEndpoint(Class<? extends Endpoint> endpointClass, String path)
-			throws DeploymentException, InterruptedException {
-		if ( !serverStarted.await(500L, TimeUnit.MILLISECONDS)) {
-			throw new DeploymentException("the server failed to start");
-		}
+			throws DeploymentException {
 		endpointContainer.addEndpoint(
 			ServerEndpointConfig.Builder
 				.create(endpointClass, path)

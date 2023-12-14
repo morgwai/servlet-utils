@@ -2,14 +2,13 @@
 package pl.morgwai.base.servlet.utils;
 
 import java.io.IOException;
-import java.lang.reflect.*;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Proxy;
 import java.net.CookieManager;
 import java.net.URI;
 import java.nio.ByteBuffer;
-import java.nio.channels.ServerSocketChannel;
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
@@ -20,6 +19,7 @@ import javax.websocket.*;
 import javax.websocket.CloseReason.CloseCode;
 import javax.websocket.CloseReason.CloseCodes;
 
+import org.eclipse.jetty.server.NetworkConnector;
 import org.eclipse.jetty.websocket.javax.client.JavaxWebSocketClientContainerProvider;
 import org.eclipse.jetty.websocket.javax.common.JavaxWebSocketContainer;
 import org.junit.*;
@@ -49,9 +49,12 @@ public class WebsocketPingerServiceTests {
 		wsHttpClient.setCookieStore(cookieManager.getCookieStore());
 		clientWebsocketContainer = JavaxWebSocketClientContainerProvider.getContainer(wsHttpClient);
 		server = new TestServer(0);
-		server.start();
-		port = ((ServerSocketChannel) server.getConnectors()[0].getTransport())
-				.socket().getLocalPort();
+		port = Arrays.stream(server.getConnectors())
+			.filter(NetworkConnector.class::isInstance)
+			.findFirst()
+			.map(NetworkConnector.class::cast)
+			.map(NetworkConnector::getLocalPort)
+			.orElseThrow();
 		websocketUrl = "ws://localhost:" + port + TestServer.APP_PATH;
 	}
 
