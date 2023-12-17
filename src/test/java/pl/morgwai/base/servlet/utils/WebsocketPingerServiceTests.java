@@ -8,7 +8,8 @@ import java.net.CookieManager;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
@@ -19,43 +20,37 @@ import javax.websocket.*;
 import javax.websocket.CloseReason.CloseCode;
 import javax.websocket.CloseReason.CloseCodes;
 
-import org.eclipse.jetty.server.NetworkConnector;
 import org.eclipse.jetty.websocket.javax.client.JavaxWebSocketClientContainerProvider;
 import org.eclipse.jetty.websocket.javax.common.JavaxWebSocketContainer;
 import org.junit.*;
 import pl.morgwai.base.servlet.utils.WebsocketPingerService.PingPongPlayer;
-import pl.morgwai.base.servlet.utils.tests.TestServer;
+import pl.morgwai.base.servlet.utils.tests.WebsocketServer;
 
 import static org.junit.Assert.*;
 
 
 
-public class WebsocketPingerServiceTests {
+public abstract class WebsocketPingerServiceTests {
 
 
 
 	org.eclipse.jetty.client.HttpClient wsHttpClient;
 	WebSocketContainer clientWebsocketContainer;
-	TestServer server;
-	int port;
-	String websocketUrl;
+	WebsocketServer server;
+
+
+
+	protected abstract WebsocketServer createServer();
 
 
 
 	@Before
-	public void setup() throws Exception {
+	public void setup() {
 		final var cookieManager = new CookieManager();
 		wsHttpClient = new org.eclipse.jetty.client.HttpClient();
 		wsHttpClient.setCookieStore(cookieManager.getCookieStore());
 		clientWebsocketContainer = JavaxWebSocketClientContainerProvider.getContainer(wsHttpClient);
-		server = new TestServer(0);
-		port = Arrays.stream(server.getConnectors())
-			.filter(NetworkConnector.class::isInstance)
-			.findFirst()
-			.map(NetworkConnector.class::cast)
-			.map(NetworkConnector::getLocalPort)
-			.orElseThrow();
-		websocketUrl = "ws://localhost:" + port + TestServer.APP_PATH;
+		server = createServer();
 	}
 
 
@@ -67,9 +62,7 @@ public class WebsocketPingerServiceTests {
 		jettyWsContainer.destroy();
 		wsHttpClient.stop();
 		wsHttpClient.destroy();
-		server.stop();
-		server.join();
-		server.destroy();
+		server.stopz();
 	}
 
 
@@ -79,7 +72,7 @@ public class WebsocketPingerServiceTests {
 	 * container-created {@link ServerEndpoint} instance. As each test method deploys its
 	 * {@link ServerEndpoint} at a different URI/path, tests may safely run in parallel.
 	 */
-	static final ConcurrentMap<URI, CountDownLatch> serverEndpointCreated =
+	static final ConcurrentMap<String, CountDownLatch> serverEndpointCreated =
 			new ConcurrentHashMap<>();
 
 	/**
@@ -87,7 +80,7 @@ public class WebsocketPingerServiceTests {
 	 * {@link ServerEndpoint} instance.
 	 * @see #serverEndpointCreated
 	 */
-	static final ConcurrentMap<URI, ServerEndpoint> serverEndpointInstance =
+	static final ConcurrentMap<String, ServerEndpoint> serverEndpointInstance =
 			new ConcurrentHashMap<>();
 
 
@@ -133,6 +126,7 @@ public class WebsocketPingerServiceTests {
 		@Override
 		public void onError(Session session, Throwable error) {
 			System.err.println(id + ": " + error);
+			error.printStackTrace();
 			errors.add(error);
 		}
 	}
@@ -157,8 +151,8 @@ public class WebsocketPingerServiceTests {
 		@Override
 		public void onOpen(Session connection, EndpointConfig config) {
 			super.onOpen(connection, config);
-			serverEndpointInstance.put(connection.getRequestURI(), this);
-			serverEndpointCreated.get(connection.getRequestURI()).countDown();
+			serverEndpointInstance.put(connection.getRequestURI().getPath(), this);
+			serverEndpointCreated.get(connection.getRequestURI().getPath()).countDown();
 		}
 	}
 
@@ -193,18 +187,19 @@ public class WebsocketPingerServiceTests {
 		CloseCode expectedClientCloseCode,
 		BiConsumer<ServerEndpoint, ClientEndpoint> test
 	) throws Exception {
-		server.addEndpoint(ServerEndpoint.class, path);
-		final var clientEndpoint = new ClientEndpoint();
-		final var url = URI.create(websocketUrl + path);
-		serverEndpointCreated.put(url, new CountDownLatch(1));
+		server.startAndAddEndpoint(ServerEndpoint.class, path);
+		final var url = URI.create(
+				"ws://localhost:" + server.getPort() + WebsocketServer.APP_PATH + path);
+		serverEndpointCreated.put(url.getPath(), new CountDownLatch(1));
 		final ServerEndpoint serverEndpoint;
+		final var clientEndpoint = new ClientEndpoint();
 		final var clientConnection = clientWebsocketContainer.connectToServer(
 				clientEndpoint, null, url);
 		try {
-			if ( !serverEndpointCreated.get(url).await(100L, TimeUnit.MILLISECONDS)) {
+			if ( !serverEndpointCreated.get(url.getPath()).await(100L, TimeUnit.MILLISECONDS)) {
 				fail("ServerEndpoint should be created");
 			}
-			serverEndpoint = serverEndpointInstance.get(url);
+			serverEndpoint = serverEndpointInstance.get(url.getPath());
 			test.accept(serverEndpoint, clientEndpoint);
 		} finally {
 			if (closeClientConnection) clientConnection.close();
