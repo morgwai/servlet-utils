@@ -245,7 +245,9 @@ public class WebsocketPingerService {
 			} catch (InterruptedException ignored) {}
 			if ( !scheduler.isTerminated()) log.warning("service's executor failed to terminate");
 		}
-		return connectionPingPongPlayers.keySet();
+		final var remaining = Set.copyOf(connectionPingPongPlayers.keySet());
+		connectionPingPongPlayers.clear();
+		return remaining;
 	}
 
 
