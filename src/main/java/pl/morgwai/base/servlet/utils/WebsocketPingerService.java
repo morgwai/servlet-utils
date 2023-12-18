@@ -47,6 +47,8 @@ public class WebsocketPingerService {
 
 	final boolean synchronizeSending;
 
+
+
 	final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 	final ScheduledFuture<?> pingingTask;
 	final Random random = new Random();
@@ -85,45 +87,6 @@ public class WebsocketPingerService {
 				this::pingAllConnections, 0L, intervalMillis, TimeUnit.MILLISECONDS);
 	}
 
-	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
-	 * WebsocketPingerService(intervalSeconds, SECONDS, failureLimit, synchronizeSending)}
-	 * (expect-timely-pongs mode).
-	 */
-	public WebsocketPingerService(
-		int intervalSeconds,
-		int failureLimit,
-		boolean synchronizeSending
-	) {
-		this(intervalSeconds*1000L, TimeUnit.MILLISECONDS, failureLimit, synchronizeSending);
-	}
-
-	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
-	 * WebsocketPingerService(intervalSeconds, SECONDS, failureLimit, false)}
-	 * (expect-timely-pongs mode).
-	 */
-	public WebsocketPingerService(int intervalSeconds, int failureLimit) {
-		this(intervalSeconds, TimeUnit.SECONDS, failureLimit, false);
-	}
-
-	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
-	 * WebsocketPingerService(interval, unit, failureLimit, false)} (expect-timely-pongs mode).
-	 */
-	public WebsocketPingerService(long interval, TimeUnit unit, int failureLimit) {
-		this(interval, unit, failureLimit, false);
-	}
-
-	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
-	 * WebsocketPingerService}<code>({@link #DEFAULT_INTERVAL_SECONDS}, SECONDS,
-	 * {@link #DEFAULT_FAILURE_LIMIT}, false)</code> (expect-timely-pongs mode).
-	 */
-	public WebsocketPingerService() {
-		this(DEFAULT_INTERVAL_SECONDS, TimeUnit.SECONDS, DEFAULT_FAILURE_LIMIT, false);
-	}
-
 
 
 	/**
@@ -133,30 +96,6 @@ public class WebsocketPingerService {
 	 */
 	public WebsocketPingerService(long interval, TimeUnit unit, boolean synchronizeSending) {
 		this(interval, unit, -1, synchronizeSending);
-	}
-
-	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
-	 * WebsocketPingerService(intervalSeconds, SECONDS, synchronizeSending)} (keep-alive-only mode).
-	 */
-	public WebsocketPingerService(int intervalSeconds, boolean synchronizeSending) {
-		this(intervalSeconds, TimeUnit.SECONDS, synchronizeSending);
-	}
-
-	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
-	 * WebsocketPingerService(intervalSeconds, SECONDS, false)} (keep-alive-only mode).
-	 */
-	public WebsocketPingerService(int intervalSeconds) {
-		this(intervalSeconds, TimeUnit.SECONDS, false);
-	}
-
-	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
-	 * WebsocketPingerService(interval, unit, false)} (keep-alive-only mode).
-	 */
-	public WebsocketPingerService(long interval, TimeUnit unit) {
-		this(interval, unit, false);
 	}
 
 
@@ -173,6 +112,8 @@ public class WebsocketPingerService {
 			new PingPongPlayer(connection, failureLimit, synchronizeSending, rttObserver)
 		);
 	}
+
+
 
 	/**
 	 * Registers {@code connection} for pinging by this service. Usually called in
@@ -214,18 +155,6 @@ public class WebsocketPingerService {
 
 
 
-	/** {@link #pingingTask} */
-	void pingAllConnections() {
-		if (connectionPingPongPlayers.isEmpty()) return;
-		final var pingData = new byte[8];
-		random.nextBytes(pingData);
-		for (var pingPongPlayer: connectionPingPongPlayers.values()) {
-			pingPongPlayer.sendPing(pingData);
-		}
-	}
-
-
-
 	/**
 	 * Stops the service. After a call to this method the service becomes no longer usable and
 	 * should be discarded.
@@ -248,6 +177,80 @@ public class WebsocketPingerService {
 		final var remaining = Set.copyOf(connectionPingPongPlayers.keySet());
 		connectionPingPongPlayers.clear();
 		return remaining;
+	}
+
+
+
+	/**
+	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
+	 * WebsocketPingerService(intervalSeconds, SECONDS, failureLimit, synchronizeSending)}
+	 * (expect-timely-pongs mode).
+	 */
+	public WebsocketPingerService(int intervalSeconds, int failureLimit, boolean synchronizeSending)
+	{
+		this(intervalSeconds*1000L, TimeUnit.MILLISECONDS, failureLimit, synchronizeSending);
+	}
+
+	/**
+	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
+	 * WebsocketPingerService(intervalSeconds, SECONDS, failureLimit, false)}
+	 * (expect-timely-pongs mode).
+	 */
+	public WebsocketPingerService(int intervalSeconds, int failureLimit) {
+		this(intervalSeconds, TimeUnit.SECONDS, failureLimit, false);
+	}
+
+	/**
+	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
+	 * WebsocketPingerService(interval, unit, failureLimit, false)} (expect-timely-pongs mode).
+	 */
+	public WebsocketPingerService(long interval, TimeUnit unit, int failureLimit) {
+		this(interval, unit, failureLimit, false);
+	}
+
+	/**
+	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
+	 * WebsocketPingerService}<code>({@link #DEFAULT_INTERVAL_SECONDS}, SECONDS,
+	 * {@link #DEFAULT_FAILURE_LIMIT}, false)</code> (expect-timely-pongs mode).
+	 */
+	public WebsocketPingerService() {
+		this(DEFAULT_INTERVAL_SECONDS, TimeUnit.SECONDS, DEFAULT_FAILURE_LIMIT, false);
+	}
+
+	/**
+	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
+	 * WebsocketPingerService(intervalSeconds, SECONDS, synchronizeSending)} (keep-alive-only mode).
+	 */
+	public WebsocketPingerService(int intervalSeconds, boolean synchronizeSending) {
+		this(intervalSeconds, TimeUnit.SECONDS, synchronizeSending);
+	}
+
+	/**
+	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
+	 * WebsocketPingerService(intervalSeconds, SECONDS, false)} (keep-alive-only mode).
+	 */
+	public WebsocketPingerService(int intervalSeconds) {
+		this(intervalSeconds, TimeUnit.SECONDS, false);
+	}
+
+	/**
+	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
+	 * WebsocketPingerService(interval, unit, false)} (keep-alive-only mode).
+	 */
+	public WebsocketPingerService(long interval, TimeUnit unit) {
+		this(interval, unit, false);
+	}
+
+
+
+	/** {@link #pingingTask} */
+	void pingAllConnections() {
+		if (connectionPingPongPlayers.isEmpty()) return;
+		final var pingData = new byte[8];
+		random.nextBytes(pingData);
+		for (var pingPongPlayer: connectionPingPongPlayers.values()) {
+			pingPongPlayer.sendPing(pingData);
+		}
 	}
 
 
