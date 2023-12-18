@@ -310,10 +310,17 @@ public abstract class WebsocketPingerServiceTests {
 			assertEquals("failure count should be reset", 0, pingPongPlayer.failureCount);
 			assertNull("pingPongPlayer should not be awaiting for pong anymore",
 					pingPongPlayer.pingNanos);
-			assertTrue("rtt should be accurately reported",
-					pongNanosHolder[0] - pingNanos - rttNanosHolder[0] < 1_000_000);
+			final var measuredNanos = pongNanosHolder[0] - pingNanos;
+			assertTrue(
+				"RTT should be accurately reported (measured: " + measuredNanos
+						+ "ns, reported: " + rttNanosHolder[0] + "ns. This may fail due to spikes "
+						+ "in CPU usage by other processes, so try to rerun few times)",
+				pongNanosHolder[0] - pingNanos - rttNanosHolder[0] < getAllowedRttInaccuracyNanos()
+			);
 		});
 	}
+
+	protected abstract long getAllowedRttInaccuracyNanos();
 
 
 
