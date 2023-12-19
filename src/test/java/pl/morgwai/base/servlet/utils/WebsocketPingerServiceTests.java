@@ -416,8 +416,10 @@ public abstract class WebsocketPingerServiceTests {
 	@Test
 	public void testServiceKeepAliveRate() throws Exception {
 		final var PATH = "/testServiceKeepAliveRate";
-		final int NUM_EXPECTED_PONGS = 3;
-		final var service = new WebsocketPingerService(1, false);
+		final int NUM_EXPECTED_PONGS = 5;
+		final long INTERVAL_MILLIS = 100L;
+		final var service =
+				new WebsocketPingerService(INTERVAL_MILLIS, TimeUnit.MILLISECONDS, false);
 		boolean serviceEmpty;
 		try {
 			performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
@@ -425,8 +427,10 @@ public abstract class WebsocketPingerServiceTests {
 				assertEquals("there should be no registered connection initially",
 						0, service.getNumberOfConnections());
 				service.addConnection(serverEndpoint.connection);
-				assertTrue("connection should be successfully registered",
+				assertTrue("connection should be successfully added",
 						service.containsConnection(serverEndpoint.connection));
+				assertEquals("there should be 1 registered connection after adding",
+						1, service.getNumberOfConnections());
 				final var pingPongPlayer = serverEndpoint.connection.getMessageHandlers().stream()
 					.filter(PingPongPlayer.class::isInstance)
 					.map(PingPongPlayer.class::cast)
@@ -442,21 +446,18 @@ public abstract class WebsocketPingerServiceTests {
 				serverEndpoint.connection.removeMessageHandler(pingPongPlayer);
 				serverEndpoint.connection.addMessageHandler(decoratedHandler);
 				try {
-					assertEquals("there should be 1 registered connection after adding",
-							1, service.getNumberOfConnections());
-					Thread.sleep(1000L * NUM_EXPECTED_PONGS);
-				} catch (InterruptedException e) {
-					fail("test interrupted");
-				} finally {
-					serverEndpoint.connection.removeMessageHandler(decoratedHandler);
-					serverEndpoint.connection.addMessageHandler(pingPongPlayer);
+					Thread.sleep(INTERVAL_MILLIS * NUM_EXPECTED_PONGS);
 					assertTrue("connection removal should succeed",
 							service.removeConnection(serverEndpoint.connection));
-					assertFalse("service should indicate that connection was removed",
-							service.containsConnection(serverEndpoint.connection));
-					assertEquals("there should be no registered connection after removing",
-							0, service.getNumberOfConnections());
+					Thread.sleep(20L);  // assumed max RTT millis
+				} catch (InterruptedException e) {
+					service.removeConnection(serverEndpoint.connection);
+					fail("test interrupted");
 				}
+				assertFalse("service should indicate that connection was removed",
+						service.containsConnection(serverEndpoint.connection));
+				assertEquals("there should be no registered connection after removing",
+						0, service.getNumberOfConnections());
 				assertEquals("correct number of pongs should be received within the timeframe",
 						NUM_EXPECTED_PONGS, pongCounter.get());
 			});
