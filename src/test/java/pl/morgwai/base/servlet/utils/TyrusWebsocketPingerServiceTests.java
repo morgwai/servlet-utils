@@ -1,7 +1,7 @@
 // Copyright (c) Piotr Morgwai Kotarbinski, Licensed under the Apache License, Version 2.0
 package pl.morgwai.base.servlet.utils;
 
-import javax.websocket.Endpoint;
+import jakarta.websocket.Endpoint;
 
 import pl.morgwai.base.servlet.utils.tests.TyrusServer;
 import pl.morgwai.base.servlet.utils.tests.WebsocketServer;
