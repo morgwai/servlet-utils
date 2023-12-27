@@ -312,9 +312,10 @@ public abstract class WebsocketPingerServiceTests {
 					pingPongPlayer.pingNanos);
 			final var measuredNanos = pongNanosHolder[0] - pingNanos;
 			assertTrue(
-				"RTT should be accurately reported (measured: " + measuredNanos
-						+ "ns, reported: " + rttNanosHolder[0] + "ns. This may fail due to spikes "
-						+ "in CPU usage by other processes, so try to rerun few times)",
+				"RTT should be accurately reported (measured: " + measuredNanos + "ns, reported: "
+						+ rttNanosHolder[0] + "ns. This may fail due to CPU usage spikes by other "
+						+ "processes, so try to rerun few times, but if the failure persists it "
+						+ "probably means a bug)",
 				pongNanosHolder[0] - pingNanos - rttNanosHolder[0] < getAllowedRttInaccuracyNanos()
 			);
 		});
