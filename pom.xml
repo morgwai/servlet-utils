@@ -45,6 +45,12 @@
 			<version>[4.13.2,4.999.0]</version>
 			<scope>test</scope>
 		</dependency>
+		<dependency>
+			<groupId>pl.morgwai.base</groupId>
+			<artifactId>jul-utils</artifactId>
+			<version>3.0</version>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 
 	<profiles>

@@ -8,13 +8,11 @@ import java.net.CookieManager;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.util.logging.*;
 
 import javax.websocket.*;
 import javax.websocket.CloseReason.CloseCode;
@@ -26,7 +24,11 @@ import org.junit.*;
 import pl.morgwai.base.servlet.utils.WebsocketPingerService.PingPongPlayer;
 import pl.morgwai.base.servlet.utils.tests.WebsocketServer;
 
+import static java.util.logging.Level.FINEST;
+import static java.util.logging.Level.WARNING;
+
 import static org.junit.Assert.*;
+import static pl.morgwai.base.jul.JulConfigurator.*;
 
 
 
@@ -536,20 +538,17 @@ public abstract class WebsocketPingerServiceTests {
 
 
 
-	/** {@code FINE} will log all endpoint lifecycle method calls. */
-	static Level LOG_LEVEL = Level.WARNING;
-
 	static final Logger log = Logger.getLogger(WebsocketPingerServiceTests.class.getName());
-	static final Logger pingerLog = Logger.getLogger(WebsocketPingerService.class.getName());
 
+
+
+	/** {@code FINE} will log all endpoint lifecycle method calls. */
 	@BeforeClass
 	public static void setupLogging() {
-		try {
-			LOG_LEVEL = Level.parse(System.getProperty(
-				WebsocketPingerServiceTests.class.getPackageName() + ".level"));
-		} catch (Exception ignored) {}
-		log.setLevel(LOG_LEVEL);
-		pingerLog.setLevel(LOG_LEVEL);
-		for (final var handler: Logger.getLogger("").getHandlers()) handler.setLevel(LOG_LEVEL);
+		addOrReplaceLoggingConfigProperties(Map.of(
+			LEVEL_SUFFIX, WARNING.toString(),
+			ConsoleHandler.class.getName() + LEVEL_SUFFIX, FINEST.toString()
+		));
+		overrideLogLevelsWithSystemProperties("pl.morgwai");
 	}
 }
