@@ -39,7 +39,6 @@ public class WebsocketPingerService {
 
 	/** Majority of proxy and NAT routers have timeout of at least 60s. */
 	public static final int DEFAULT_INTERVAL_SECONDS = 55;
-	final long intervalMillis;
 
 	/** Arbitrarily chosen number. */
 	public static final int DEFAULT_FAILURE_LIMIT = 4;
@@ -77,14 +76,12 @@ public class WebsocketPingerService {
 		int failureLimit,
 		boolean synchronizeSending
 	) {
-		this.intervalMillis = unit.toMillis(interval);
-		if (intervalMillis < 1L) {
+		if (unit.toMillis(interval) < 1L) {
 			throw new IllegalArgumentException("interval must be at least 1ms");
 		}
 		this.failureLimit = failureLimit;
 		this.synchronizeSending = synchronizeSending;
-		pingingTask = scheduler.scheduleAtFixedRate(
-				this::pingAllConnections, 0L, intervalMillis, TimeUnit.MILLISECONDS);
+		pingingTask = scheduler.scheduleAtFixedRate(this::pingAllConnections, 0L, interval, unit);
 	}
 
 
