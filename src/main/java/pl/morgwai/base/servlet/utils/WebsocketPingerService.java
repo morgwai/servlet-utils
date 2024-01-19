@@ -100,6 +100,63 @@ public class WebsocketPingerService {
 
 
 
+	// block of constructor variants using some default values:
+	/**
+	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
+	 * WebsocketPingerService(intervalSeconds, SECONDS, failureLimit, synchronizeSending)}
+	 * (expect-timely-pongs mode).
+	 */
+	public WebsocketPingerService(int intervalSeconds, int failureLimit, boolean synchronizeSending)
+	{
+		this(intervalSeconds, TimeUnit.SECONDS, failureLimit, synchronizeSending);
+	}
+	/**
+	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
+	 * WebsocketPingerService(intervalSeconds, SECONDS, failureLimit, false)}
+	 * (expect-timely-pongs mode).
+	 */
+	public WebsocketPingerService(int intervalSeconds, int failureLimit) {
+		this(intervalSeconds, TimeUnit.SECONDS, failureLimit, false);
+	}
+	/**
+	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
+	 * WebsocketPingerService(interval, unit, failureLimit, false)} (expect-timely-pongs mode).
+	 */
+	public WebsocketPingerService(long interval, TimeUnit unit, int failureLimit) {
+		this(interval, unit, failureLimit, false);
+	}
+	/**
+	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
+	 * WebsocketPingerService}<code>({@link #DEFAULT_INTERVAL_SECONDS}, SECONDS,
+	 * {@link #DEFAULT_FAILURE_LIMIT}, false)</code> (expect-timely-pongs mode).
+	 */
+	public WebsocketPingerService() {
+		this(DEFAULT_INTERVAL_SECONDS, TimeUnit.SECONDS, DEFAULT_FAILURE_LIMIT, false);
+	}
+	/**
+	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
+	 * WebsocketPingerService(intervalSeconds, SECONDS, synchronizeSending)} (keep-alive-only mode).
+	 */
+	public WebsocketPingerService(int intervalSeconds, boolean synchronizeSending) {
+		this(intervalSeconds, TimeUnit.SECONDS, synchronizeSending);
+	}
+	/**
+	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
+	 * WebsocketPingerService(intervalSeconds, SECONDS, false)} (keep-alive-only mode).
+	 */
+	public WebsocketPingerService(int intervalSeconds) {
+		this(intervalSeconds, TimeUnit.SECONDS, false);
+	}
+	/**
+	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
+	 * WebsocketPingerService(interval, unit, false)} (keep-alive-only mode).
+	 */
+	public WebsocketPingerService(long interval, TimeUnit unit) {
+		this(interval, unit, false);
+	}
+
+
+
 	/**
 	 * Registers {@code connection} for pinging by this service and {@code rttObserver} that will
 	 * receive round-trip time reports each time a matched pong arrives on {@code connection}.
@@ -177,68 +234,6 @@ public class WebsocketPingerService {
 		final var remaining = Set.copyOf(connectionPingPongPlayers.keySet());
 		connectionPingPongPlayers.clear();
 		return remaining;
-	}
-
-
-
-	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
-	 * WebsocketPingerService(intervalSeconds, SECONDS, failureLimit, synchronizeSending)}
-	 * (expect-timely-pongs mode).
-	 */
-	public WebsocketPingerService(int intervalSeconds, int failureLimit, boolean synchronizeSending)
-	{
-		this(intervalSeconds*1000L, TimeUnit.MILLISECONDS, failureLimit, synchronizeSending);
-	}
-
-	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
-	 * WebsocketPingerService(intervalSeconds, SECONDS, failureLimit, false)}
-	 * (expect-timely-pongs mode).
-	 */
-	public WebsocketPingerService(int intervalSeconds, int failureLimit) {
-		this(intervalSeconds, TimeUnit.SECONDS, failureLimit, false);
-	}
-
-	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
-	 * WebsocketPingerService(interval, unit, failureLimit, false)} (expect-timely-pongs mode).
-	 */
-	public WebsocketPingerService(long interval, TimeUnit unit, int failureLimit) {
-		this(interval, unit, failureLimit, false);
-	}
-
-	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
-	 * WebsocketPingerService}<code>({@link #DEFAULT_INTERVAL_SECONDS}, SECONDS,
-	 * {@link #DEFAULT_FAILURE_LIMIT}, false)</code> (expect-timely-pongs mode).
-	 */
-	public WebsocketPingerService() {
-		this(DEFAULT_INTERVAL_SECONDS, TimeUnit.SECONDS, DEFAULT_FAILURE_LIMIT, false);
-	}
-
-	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
-	 * WebsocketPingerService(intervalSeconds, SECONDS, synchronizeSending)} (keep-alive-only mode).
-	 */
-	public WebsocketPingerService(int intervalSeconds, boolean synchronizeSending) {
-		this(intervalSeconds, TimeUnit.SECONDS, synchronizeSending);
-	}
-
-	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
-	 * WebsocketPingerService(intervalSeconds, SECONDS, false)} (keep-alive-only mode).
-	 */
-	public WebsocketPingerService(int intervalSeconds) {
-		this(intervalSeconds, TimeUnit.SECONDS, false);
-	}
-
-	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
-	 * WebsocketPingerService(interval, unit, false)} (keep-alive-only mode).
-	 */
-	public WebsocketPingerService(long interval, TimeUnit unit) {
-		this(interval, unit, false);
 	}
 
 
