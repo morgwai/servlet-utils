@@ -1,6 +1,7 @@
 # Servlet utils
 
 Some helpful classes when developing `Servlet`s and websocket `Endpoint`s.<br/>
+Copyright 2021 Piotr Morgwai Kotarbinski, Licensed under the Apache License, Version 2.0.<br/>
 <br/>
 **latest release: 4.1**<br/>
 [javax flavor](https://search.maven.org/artifact/pl.morgwai.base/servlet-utils/4.1-javax/jar)
