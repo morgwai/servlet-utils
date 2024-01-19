@@ -293,7 +293,7 @@ public class WebsocketPingerService {
 			if (failureLimit >= 0 && pingNanos != null) {  // the previous ping timed out
 				failureCount++;
 				if (failureCount > failureLimit) {
-					closeFailedConnection();
+					closeFailedConnection("too many lost or timed-out pongs");
 					return;
 				}
 			}
@@ -309,15 +309,14 @@ public class WebsocketPingerService {
 				pingNanos = System.nanoTime();
 				pingDataBuffer.rewind();
 			} catch (IOException e) {
-				closeFailedConnection();
+				closeFailedConnection("failed to send ping");
 			}
 		}
 
-		private void closeFailedConnection() {
+		private void closeFailedConnection(String reason) {
 			if (log.isLoggable(Level.FINE)) log.fine("failure on connection " + connection.getId());
 			try {
-				connection.close(new CloseReason(
-					CloseCodes.PROTOCOL_ERROR, "communication failure"));
+				connection.close(new CloseReason(CloseCodes.PROTOCOL_ERROR, reason));
 			} catch (IOException ignored) {}
 		}
 
