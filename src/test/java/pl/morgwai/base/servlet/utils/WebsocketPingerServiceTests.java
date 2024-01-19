@@ -21,6 +21,7 @@ import javax.websocket.CloseReason.CloseCodes;
 import org.eclipse.jetty.websocket.javax.client.JavaxWebSocketClientContainerProvider;
 import org.eclipse.jetty.websocket.javax.common.JavaxWebSocketContainer;
 import org.junit.*;
+import pl.morgwai.base.jul.JulFormatter;
 import pl.morgwai.base.servlet.utils.WebsocketPingerService.PingPongPlayer;
 import pl.morgwai.base.servlet.utils.tests.WebsocketServer;
 
@@ -29,6 +30,7 @@ import static java.util.logging.Level.WARNING;
 
 import static org.junit.Assert.*;
 import static pl.morgwai.base.jul.JulConfigurator.*;
+import static pl.morgwai.base.jul.JulFormatter.FORMATTER_SUFFIX;
 
 
 
@@ -547,6 +549,7 @@ public abstract class WebsocketPingerServiceTests {
 	public static void setupLogging() {
 		addOrReplaceLoggingConfigProperties(Map.of(
 			LEVEL_SUFFIX, WARNING.toString(),
+			ConsoleHandler.class.getName() + FORMATTER_SUFFIX, JulFormatter.class.getName(),
 			ConsoleHandler.class.getName() + LEVEL_SUFFIX, FINEST.toString()
 		));
 		overrideLogLevelsWithSystemProperties("pl.morgwai");
