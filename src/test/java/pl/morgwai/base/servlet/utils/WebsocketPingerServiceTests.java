@@ -256,7 +256,7 @@ public abstract class WebsocketPingerServiceTests {
 			}
 			assertEquals("failure count should not increase", 0, pingPongPlayer.failureCount);
 			assertNotNull("pingPongPlayer should still be awaiting for matching pong",
-					pingPongPlayer.pingNanos);
+					pingPongPlayer.pingTimestampNanos);
 			assertFalse("rtt should not be reported", rttReportedHolder[0]);
 
 			serverEndpoint.connection.removeMessageHandler(decoratedPongHandler);
@@ -300,7 +300,7 @@ public abstract class WebsocketPingerServiceTests {
 			pingPongPlayer.sendPing("testPingData".getBytes(StandardCharsets.UTF_8));
 			try {
 				assertNotNull("pingPongPlayer should be awaiting for pong",
-						pingPongPlayer.pingNanos);
+						pingPongPlayer.pingTimestampNanos);
 			} finally {
 				postPingVerificationsDone.countDown();
 			}
@@ -313,7 +313,7 @@ public abstract class WebsocketPingerServiceTests {
 			}
 			assertEquals("failure count should be reset", 0, pingPongPlayer.failureCount);
 			assertNull("pingPongPlayer should not be awaiting for pong anymore",
-					pingPongPlayer.pingNanos);
+					pingPongPlayer.pingTimestampNanos);
 			final var measuredNanos = pongNanosHolder[0] - pingNanos;
 			assertTrue(
 				"RTT should be accurately reported (measured: " + measuredNanos + "ns, reported: "
@@ -356,7 +356,7 @@ public abstract class WebsocketPingerServiceTests {
 			}
 			assertEquals("failure count should not increase", 0, pingPongPlayer.failureCount);
 			assertNull("pingPongPlayer should not be awaiting for pong",
-					pingPongPlayer.pingNanos);
+					pingPongPlayer.pingTimestampNanos);
 		});
 	}
 
@@ -388,7 +388,7 @@ public abstract class WebsocketPingerServiceTests {
 			}
 			assertEquals("failure count should not increase", 0, pingPongPlayer.failureCount);
 			assertNotNull("pingPongPlayer should still be awaiting for matching pong",
-					pingPongPlayer.pingNanos);
+					pingPongPlayer.pingTimestampNanos);
 		});
 	}
 
@@ -404,12 +404,12 @@ public abstract class WebsocketPingerServiceTests {
 
 			pingPongPlayer.sendPing("firstPingData".getBytes(StandardCharsets.UTF_8));
 			assertNotNull("pingPongPlayer should be still awaiting for pong",
-					pingPongPlayer.pingNanos);
+					pingPongPlayer.pingTimestampNanos);
 			assertEquals("failure count should still be 0", 0, pingPongPlayer.failureCount);
 
 			pingPongPlayer.sendPing("secondPingData".getBytes(StandardCharsets.UTF_8));
 			assertNotNull("pingPongPlayer should be still awaiting for pong",
-					pingPongPlayer.pingNanos);
+					pingPongPlayer.pingTimestampNanos);
 			assertEquals("failure count should be increased", 1, pingPongPlayer.failureCount);
 
 			pingPongPlayer.sendPing("secondPingData".getBytes(StandardCharsets.UTF_8));
@@ -521,7 +521,7 @@ public abstract class WebsocketPingerServiceTests {
 			pingPongPlayer.sendPing("testPingData".getBytes(StandardCharsets.UTF_8));
 			try {
 				assertNotNull("pingPongPlayer should be awaiting for pong",
-						pingPongPlayer.pingNanos);
+						pingPongPlayer.pingTimestampNanos);
 			} finally {
 				postPingVerificationsDone.countDown();
 			}
@@ -534,7 +534,7 @@ public abstract class WebsocketPingerServiceTests {
 			}
 			assertEquals("failure count should be reset", 0, pingPongPlayer.failureCount);
 			assertNull("pingPongPlayer should not be awaiting for pong anymore",
-					pingPongPlayer.pingNanos);
+					pingPongPlayer.pingTimestampNanos);
 		});
 	}
 
