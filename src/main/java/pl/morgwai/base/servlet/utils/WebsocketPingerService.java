@@ -219,23 +219,25 @@ public class WebsocketPingerService {
 	 * After a call to this method the service becomes no longer usable and should be discarded.
 	 * @return connections that were registered at the time this method was called.
 	 */
-	public Set<Session> stop() {
+	public Set<Session> stop(long timeout, TimeUnit unit) {
 		pingingTask.cancel(true);
 		scheduler.shutdown();
 		for (var pingPongPlayer: connectionPingPongPlayers.values()) pingPongPlayer.deregister();
 		try {
-			scheduler.awaitTermination(500L, MILLISECONDS);  // should terminate quickly
+			scheduler.awaitTermination(timeout, unit);
 		} catch (InterruptedException ignored) {}
-		if ( !scheduler.isTerminated()) {
-			scheduler.shutdownNow();
-			try {
-				scheduler.awaitTermination(50L, MILLISECONDS);  // should terminate immediately
-			} catch (InterruptedException ignored) {}
-			if ( !scheduler.isTerminated()) log.warning("pinging scheduler failed to terminate");
+		if ( !scheduler.isTerminated()) {  // this probably never happens
+			log.warning("pinging scheduler failed to terminate");
+			scheduler.shutdownNow();  // probably won't help as the task was cancelled already
 		}
 		final var remaining = Set.copyOf(connectionPingPongPlayers.keySet());
 		connectionPingPongPlayers.clear();
 		return remaining;
+	}
+
+	/** Calls {@link #stop(long, TimeUnit)} with a 500ms timeout. */
+	public Set<Session> stop() {
+		return stop(500L, MILLISECONDS);
 	}
 
 
@@ -246,6 +248,7 @@ public class WebsocketPingerService {
 		final var pingData = new byte[8];  // enough to avoid collisions, but not overuse random
 		random.nextBytes(pingData);
 		for (var pingPongPlayer: connectionPingPongPlayers.values()) {
+			if (Thread.interrupted()) break;
 			pingPongPlayer.sendPing(pingData);
 		}
 	}
