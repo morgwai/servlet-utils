@@ -346,7 +346,12 @@ public class WebsocketPingerService {
 		 * Called by the service on connections remaining after {@link #stop()}.
 		 */
 		void deregister() {
-			connection.removeMessageHandler(this);
+			try {
+				connection.removeMessageHandler(this);
+			} catch (RuntimeException ignored) {
+				// connection was closed in the mean time and some container implementations
+				// throw a RuntimeException in case of any operation on a closed connection
+			}
 		}
 	}
 
