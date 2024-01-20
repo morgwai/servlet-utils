@@ -2,12 +2,10 @@
 package pl.morgwai.base.servlet.utils;
 
 import java.io.IOException;
-import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
 import java.net.CookieManager;
 import java.net.URI;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -25,12 +23,15 @@ import pl.morgwai.base.jul.JulFormatter;
 import pl.morgwai.base.servlet.utils.WebsocketPingerService.PingPongPlayer;
 import pl.morgwai.base.servlet.utils.tests.WebsocketServer;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.logging.Level.FINEST;
 import static java.util.logging.Level.WARNING;
 
 import static org.junit.Assert.*;
 import static pl.morgwai.base.jul.JulConfigurator.*;
 import static pl.morgwai.base.jul.JulFormatter.FORMATTER_SUFFIX;
+import static pl.morgwai.base.servlet.utils.tests.WebsocketServer.APP_PATH;
 
 
 
@@ -39,12 +40,8 @@ public abstract class WebsocketPingerServiceTests {
 
 
 	org.eclipse.jetty.client.HttpClient wsHttpClient;
-	WebSocketContainer clientWebsocketContainer;
+	WebSocketContainer clientContainer;
 	WebsocketServer server;
-
-
-
-	protected abstract WebsocketServer createServer();
 
 
 
@@ -53,39 +50,381 @@ public abstract class WebsocketPingerServiceTests {
 		final var cookieManager = new CookieManager();
 		wsHttpClient = new org.eclipse.jetty.client.HttpClient();
 		wsHttpClient.setCookieStore(cookieManager.getCookieStore());
-		clientWebsocketContainer = JavaxWebSocketClientContainerProvider.getContainer(wsHttpClient);
+		clientContainer = JavaxWebSocketClientContainerProvider.getContainer(wsHttpClient);
 		server = createServer();
 	}
+
+	protected abstract WebsocketServer createServer();
 
 
 
 	@After
 	public void shutdown() throws Exception {
-		final var jettyWsContainer = ((JavaxWebSocketContainer) clientWebsocketContainer);
+		final var jettyWsContainer = ((JavaxWebSocketContainer) clientContainer);
 		jettyWsContainer.stop();
 		jettyWsContainer.destroy();
 		wsHttpClient.stop();
 		wsHttpClient.destroy();
-		server.stopz();
+		server.shutdown();
 	}
 
 
 
 	/**
-	 * A static point of synchronization between a given test method and the corresponding
-	 * container-created {@link ServerEndpoint} instance. As each test method deploys its
-	 * {@link ServerEndpoint} at a different URI/path, tests may safely run in parallel.
+	 * Performs {@code test} over a websocket connection.
+	 * <ol>
+	 *   <li>establishes a connection between a new {@link ClientEndpoint} and {@link #server}.</li>
+	 *   <li>waits for a {@link ServerEndpoint} to be {@link ServerEndpoint#created created} and
+	 *       obtains its {@link ServerEndpoint#instances instance}.</li>
+	 *   <li>calls {@code test}.</li>
+	 *   <li>depending on the value of {@code closeClientConnection} closes the connections from the
+	 *       client side.</li>
+	 *    <li>regardless of {@code closeClientConnection}, verifies if the connection was closed on
+	 *        both endpoints with {@code expectedClientCloseCode} on the client side.</li>
+	 *    <li>verifies if there were no calls to {@link Endpoint#onError(Session, Throwable)} on
+	 *        either endpoint.</li>
+	 * </ol>
 	 */
-	static final ConcurrentMap<String, CountDownLatch> serverEndpointCreated =
-			new ConcurrentHashMap<>();
+	public void performTest(
+		String path,
+		boolean closeClientConnection,
+		CloseCode expectedClientCloseCode,
+		BiConsumer<ServerEndpoint, ClientEndpoint> test
+	) throws Exception {
+		server.startAndAddEndpoint(ServerEndpoint.class, path);
+		final var url = URI.create("ws://localhost:" + server.getPort() + APP_PATH + path);
+		ServerEndpoint.created.put(url.getPath(), new CountDownLatch(1));
+		final ServerEndpoint serverEndpoint;
+		final var clientEndpoint = new ClientEndpoint();
+		final var clientConnection = clientContainer.connectToServer(clientEndpoint, null, url);
+		try {
+			assertTrue("ServerEndpoint should be created",
+					ServerEndpoint.created.get(url.getPath()).await(100L, MILLISECONDS));
+			serverEndpoint = ServerEndpoint.instances.get(url.getPath());
+			test.accept(serverEndpoint, clientEndpoint);
+		} finally {
+			if (closeClientConnection) clientConnection.close();
+		}
+		assertTrue("ClientEndpoint should be closed",
+				clientEndpoint.closed.await(100L, MILLISECONDS));
+		assertTrue("ServerEndpoint should be closed",
+				serverEndpoint.closed.await(100L, MILLISECONDS));
+		assertEquals("client close code should match",
+				expectedClientCloseCode.getCode(), clientEndpoint.closeCode.getCode());
+		assertTrue("ServerEndpoint should not receive any onError(...) calls",
+				serverEndpoint.errors.isEmpty());
+		assertTrue("ClientEndpoint should not receive any onError(...) calls",
+				clientEndpoint.errors.isEmpty());
+	}
 
-	/**
-	 * A static place for a given test method to find its corresponding container-created
-	 * {@link ServerEndpoint} instance.
-	 * @see #serverEndpointCreated
-	 */
-	static final ConcurrentMap<String, ServerEndpoint> serverEndpointInstance =
-			new ConcurrentHashMap<>();
+
+
+	@Test
+	public void testKeepAlive() throws Exception {
+		final var PATH = "/testKeepAlive";
+		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
+			boolean[] rttReportedHolder = {false};
+			final var pongReceived = new CountDownLatch(1);
+			final var player = new PingPongPlayer(
+				serverEndpoint.connection,
+				-1,
+				false,
+				(connection, rttNanos) -> rttReportedHolder[0] = true
+			) {
+				@Override public void onMessage(PongMessage pong) {
+					log.fine("server " + PATH + " got pong, modifying data");
+					super.onMessage(() -> ByteBuffer.wrap("someOtherData".getBytes(UTF_8)));
+					pongReceived.countDown();
+				}
+			};
+
+			player.sendPing("firstPing".getBytes(UTF_8));
+			try {
+				assertTrue("pong should be received",
+						pongReceived.await(100L, MILLISECONDS));
+			} catch (InterruptedException e) {
+				fail("test interrupted");
+			}
+			assertEquals("failure count should not increase",
+					0, player.failureCount);
+			assertNotNull("player should still be awaiting for matching pong",
+					player.pingTimestampNanos);
+			assertFalse("rtt should not be reported",
+					rttReportedHolder[0]);
+
+			serverEndpoint.connection.removeMessageHandler(player);  // pongs won't be registered
+			player.sendPing("secondPing".getBytes(UTF_8));
+			assertEquals("failure count should not increase",
+					0, player.failureCount);
+		});
+	}
+
+
+
+	@Test
+	public void testServerPingPongWithRttReporting() throws Exception {
+		final var PATH = "/testServerPingPongWithRttReporting";
+		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
+			final long[] pongNanosHolder = {0};
+			final long[] reportedRttNanosHolder = {0};
+			final var postPingVerificationsDone = new CountDownLatch(1);
+			final var pongReceived = new CountDownLatch(1);
+			final var player = new PingPongPlayer(
+				serverEndpoint.connection,
+				2,
+				false,
+				(connection, rttNanos) -> reportedRttNanosHolder[0] = rttNanos
+			) {
+				@Override public void onMessage(PongMessage pong) {
+					log.fine("server " + PATH + " got pong, forwarding");
+					try {
+						postPingVerificationsDone.await(100L, MILLISECONDS);
+					} catch (InterruptedException ignored) {}
+					pongNanosHolder[0] = System.nanoTime();
+					super.onMessage(pong);
+					pongReceived.countDown();
+				}
+			};
+			player.failureCount = 1;
+
+			player.sendPing("testPing".getBytes(UTF_8));
+			final var pingNanos = System.nanoTime();
+			try {
+				assertNotNull("player should be awaiting for pong",
+						player.pingTimestampNanos);
+			} finally {
+				postPingVerificationsDone.countDown();
+			}
+			try {
+				assertTrue("pong should be received",
+						pongReceived.await(100L, MILLISECONDS));
+			} catch (InterruptedException e) {
+				fail("test interrupted");
+			}
+			assertEquals("failure count should be reset",
+					0, player.failureCount);
+			assertNull("player should not be awaiting for pong anymore",
+					player.pingTimestampNanos);
+			final var rttInaccuracyNanos =
+					reportedRttNanosHolder[0] - (pongNanosHolder[0] - pingNanos);
+			log.info("RTT inaccuracy: " + rttInaccuracyNanos + "ns");
+			assertTrue(
+				"RTT should be accurately reported (" + rttInaccuracyNanos + "ns, expected <50_000"
+						+ "ns. This may fail due to CPU usage spikes by other processes, so try to "
+						+ "rerun few times, but if the failure persists it probably means a bug)",
+				rttInaccuracyNanos < 50_000L
+			);
+		});
+	}
+
+
+
+	@Test
+	public void testKeepAlivePongFromClient() throws Exception {
+		final var PATH = "/testKeepAlivePongFromClient";
+		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
+			final var pongReceived = new CountDownLatch(1);
+			final var player = new PingPongPlayer(serverEndpoint.connection, 2, false, null) {
+				@Override public void onMessage(PongMessage pong) {
+					log.fine("server " + PATH + " got pong, forwarding");
+					super.onMessage(pong);
+					pongReceived.countDown();
+				}
+			};
+			final var pongData = ByteBuffer.wrap("keepAlive".getBytes(UTF_8));
+
+			try {
+				clientEndpoint.connection.getAsyncRemote().sendPong(pongData);
+				assertTrue("pong should be received",
+						pongReceived.await(100L, MILLISECONDS));
+			} catch (InterruptedException e) {
+				fail("test interrupted");
+			} catch (IOException e) {
+				fail("unexpected connection problem " + e);
+			}
+			assertEquals("failure count should not increase",
+					0, player.failureCount);
+			assertNull("player should not be awaiting for pong",
+					player.pingTimestampNanos);
+		});
+	}
+
+
+
+	@Test
+	public void testUnmatchedPongAfterPing() throws Exception {
+		final var PATH = "/testUnmatchedPong";
+		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
+			final var pongReceived = new CountDownLatch(1);
+			final var player = new PingPongPlayer(serverEndpoint.connection, 2, false, null) {
+				@Override public void onMessage(PongMessage pong) {
+					log.fine("server " + PATH + " got pong, modifying data");
+					super.onMessage(() -> ByteBuffer.wrap("someOtherData".getBytes(UTF_8)));
+					pongReceived.countDown();
+				}
+			};
+
+			player.sendPing("originalPingData".getBytes(UTF_8));
+			try {
+				assertTrue("pong should be received",
+						pongReceived.await(100L, MILLISECONDS));
+			} catch (InterruptedException e) {
+				fail("test interrupted");
+			}
+			assertEquals("failure count should not increase",
+					0, player.failureCount);
+			assertNotNull("player should still be awaiting for matching pong",
+					player.pingTimestampNanos);
+		});
+	}
+
+
+
+	@Test
+	public void testTimedOutPongAndFailureLimitExceeded() throws Exception {
+		final var PATH = "/testTimedOutPongAndFailureLimitExceeded";
+		performTest(PATH, false, CloseCodes.PROTOCOL_ERROR, (serverEndpoint, clientEndpoint) -> {
+			final var player = new PingPongPlayer(serverEndpoint.connection, 1, false, null);
+			serverEndpoint.connection.removeMessageHandler(player);  // pongs won't be registered
+
+			player.sendPing("firstPing".getBytes(UTF_8));
+			assertNotNull("player should be still awaiting for pong",
+					player.pingTimestampNanos);
+			assertEquals("failure count should still be 0",
+					0, player.failureCount);
+
+			player.sendPing("secondPing".getBytes(UTF_8));
+			assertNotNull("player should be still awaiting for pong",
+					player.pingTimestampNanos);
+			assertEquals("failure count should be increased",
+					1, player.failureCount);
+
+			player.sendPing("thirdPing".getBytes(UTF_8));  // exceed failure limit
+		});
+	}
+
+
+
+	@Test
+	public void testServiceKeepAliveRate() throws Exception {
+		final var PATH = "/testServiceKeepAliveRate";
+		final int NUM_EXPECTED_PONGS = 3;
+		final long INTERVAL_MILLIS = 200L;
+		final var service = new WebsocketPingerService(INTERVAL_MILLIS, MILLISECONDS, false);
+		boolean serviceEmpty;
+		try {
+			performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
+				assertEquals("there should be no registered connection initially",
+						0, service.getNumberOfConnections());
+
+				service.addConnection(serverEndpoint.connection);
+				assertTrue("connection should be successfully added",
+						service.containsConnection(serverEndpoint.connection));
+				assertEquals("there should be 1 registered connection after adding",
+						1, service.getNumberOfConnections());
+
+				final var pongCounter = new AtomicInteger(0);
+				final var player = service.connectionPingPongPlayers.get(serverEndpoint.connection);
+				final var decoratedHandler = new MessageHandler.Whole<PongMessage>() {
+					@Override public void onMessage(PongMessage pong) {
+						log.fine("server " + PATH + " got pong");
+						pongCounter.incrementAndGet();
+						player.onMessage(pong);
+					}
+				};
+				serverEndpoint.connection.removeMessageHandler(player);
+
+				serverEndpoint.connection.addMessageHandler(decoratedHandler);
+				try {
+					Thread.sleep(INTERVAL_MILLIS * NUM_EXPECTED_PONGS - 1);
+							// sleep may sleep a bit longer sometimes, so -1 to significantly
+							// decrease the chance of an extra pong while very slightly increasing
+							// the chance of a missed pong
+					assertTrue("connection removal should succeed",
+							service.removeConnection(serverEndpoint.connection));
+					Thread.sleep(20L);  // assumed max RTT millis
+				} catch (InterruptedException e) {
+					service.removeConnection(serverEndpoint.connection);
+					fail("test interrupted");
+				}
+				assertFalse("service should indicate that connection was removed",
+						service.containsConnection(serverEndpoint.connection));
+				assertEquals("there should be no registered connection after removing",
+						0, service.getNumberOfConnections());
+				assertEquals("correct number of pongs should be received within the timeframe",
+						NUM_EXPECTED_PONGS, pongCounter.get());
+			});
+		} finally {
+			serviceEmpty = service.stop().isEmpty();
+		}
+		// verify after finally block to not suppress earlier errors
+		assertTrue("there should be no remaining connections in the service",
+				serviceEmpty);
+	}
+
+
+
+	@Test
+	public void testRemoveUnregisteredConnection() {
+		final var service = new WebsocketPingerService();
+		final var connectionMock = (Session) Proxy.newProxyInstance(  // poor man's mock
+			getClass().getClassLoader(),
+			new Class[] {Session.class},
+			(proxy, method, args) -> {
+				if (method.getDeclaringClass().equals(Object.class)) {
+					return method.invoke(this, args);
+				} else {
+					throw new UnsupportedOperationException();
+				}
+			}
+		);
+		try {
+			assertFalse("removing unregistered connection should indicate no action took place",
+					service.removeConnection(connectionMock));
+		} finally {
+			service.stop();
+		}
+	}
+
+
+
+	@Test
+	public void testClientPingPong() throws Exception {
+		final var PATH = "/testClientPingPong";
+		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
+			final var postPingVerificationsDone = new CountDownLatch(1);
+			final var pongReceived = new CountDownLatch(1);
+			final var player = new PingPongPlayer(clientEndpoint.connection, 2, false, null) {
+				@Override public void onMessage(PongMessage pong) {
+					log.fine("client " + PATH + " got pong, forwarding");
+					try {
+						postPingVerificationsDone.await(100L, MILLISECONDS);
+					} catch (InterruptedException ignored) {}
+					super.onMessage(pong);
+					pongReceived.countDown();
+				}
+			};
+			player.failureCount = 1;
+
+			player.sendPing("testPing".getBytes(UTF_8));
+			try {
+				assertNotNull("player should be awaiting for pong",
+						player.pingTimestampNanos);
+			} finally {
+				postPingVerificationsDone.countDown();
+			}
+			try {
+				assertTrue("pong should be received",
+						pongReceived.await(100L, MILLISECONDS));
+			} catch (InterruptedException e) {
+				fail("test interrupted");
+			}
+			assertEquals("failure count should be reset",
+					0, player.failureCount);
+			assertNull("player should not be awaiting for pong anymore",
+					player.pingTimestampNanos);
+		});
+	}
 
 
 
@@ -106,8 +445,7 @@ public abstract class WebsocketPingerServiceTests {
 
 
 
-		@Override
-		public void onOpen(Session connection, EndpointConfig config) {
+		@Override public void onOpen(Session connection, EndpointConfig config) {
 			this.connection = connection;
 			final var url = connection.getRequestURI().toString();
 			this.id = (isServer() ? "server " : "client ") + url.substring(url.lastIndexOf('/'));
@@ -118,8 +456,7 @@ public abstract class WebsocketPingerServiceTests {
 
 
 
-		@Override
-		public void onClose(Session session, CloseReason closeReason) {
+		@Override public void onClose(Session session, CloseReason closeReason) {
 			log.fine(id + " got onClose(...), reason: " + closeReason.getCloseCode());
 			closeCode = closeReason.getCloseCode();
 			closed.countDown();
@@ -127,36 +464,9 @@ public abstract class WebsocketPingerServiceTests {
 
 
 
-		@Override
-		public void onError(Session session, Throwable error) {
-			System.err.println(id + ": " + error);
-			error.printStackTrace();
+		@Override public void onError(Session session, Throwable error) {
+			log.log(WARNING, id + " got onError(...)", error);
 			errors.add(error);
-		}
-	}
-
-
-
-	public static class ServerEndpoint extends BaseEndpoint {
-
-
-
-		@Override
-		protected boolean isServer() {
-			return true;
-		}
-
-
-
-		/**
-		 * Stores itself into {@link #serverEndpointInstance} and switches its
-		 * {@link #serverEndpointCreated}.
-		 */
-		@Override
-		public void onOpen(Session connection, EndpointConfig config) {
-			super.onOpen(connection, config);
-			serverEndpointInstance.put(connection.getRequestURI().getPath(), this);
-			serverEndpointCreated.get(connection.getRequestURI().getPath()).countDown();
 		}
 	}
 
@@ -164,377 +474,42 @@ public abstract class WebsocketPingerServiceTests {
 
 	public static class ClientEndpoint extends BaseEndpoint {
 
-		@Override
-		protected boolean isServer() {
+		@Override protected boolean isServer() {
 			return false;
 		}
 	}
 
 
 
-	/**
-	 * Performs {@code test} over a websocket connection.
-	 * <ol>
-	 *   <li>establishes a connection between a {@link ClientEndpoint} and {@link #server}</li>
-	 *   <li>calls {@code test}</li>
-	 *   <li>depending on the value of {@code closeClientConnection} closes the connections from the
-	 *       client side</li>
-	 *    <li>regardless of {@code closeClientConnection}, verifies if the connection was closed on
-	 *        both endpoints with {@code expectedClientCloseCode} on the client side</li>
-	 *    <li>verifies if there were no calls to {@link Endpoint#onError(Session, Throwable)} on
-	 *        either endpoint</li>
-	 * </ol>
-	 */
-	public void performTest(
-		String path,
-		boolean closeClientConnection,
-		CloseCode expectedClientCloseCode,
-		BiConsumer<ServerEndpoint, ClientEndpoint> test
-	) throws Exception {
-		server.startAndAddEndpoint(ServerEndpoint.class, path);
-		final var url = URI.create(
-				"ws://localhost:" + server.getPort() + WebsocketServer.APP_PATH + path);
-		serverEndpointCreated.put(url.getPath(), new CountDownLatch(1));
-		final ServerEndpoint serverEndpoint;
-		final var clientEndpoint = new ClientEndpoint();
-		final var clientConnection = clientWebsocketContainer.connectToServer(
-				clientEndpoint, null, url);
-		try {
-			if ( !serverEndpointCreated.get(url.getPath()).await(100L, TimeUnit.MILLISECONDS)) {
-				fail("ServerEndpoint should be created");
-			}
-			serverEndpoint = serverEndpointInstance.get(url.getPath());
-			test.accept(serverEndpoint, clientEndpoint);
-		} finally {
-			if (closeClientConnection) clientConnection.close();
+	public static class ServerEndpoint extends BaseEndpoint {
+
+		/**
+		 * A static point of synchronization between a given test method and the corresponding
+		 * container-created {@link ServerEndpoint} instance. As each test method deploys its
+		 * {@link ServerEndpoint} at a different URI/path, tests may safely run in parallel.
+		 */
+		static final ConcurrentMap<String, CountDownLatch> created = new ConcurrentHashMap<>();
+
+		/**
+		 * A static place for a given test method to find its corresponding container-created
+		 * {@link ServerEndpoint} instance.
+		 */
+		static final ConcurrentMap<String, ServerEndpoint> instances = new ConcurrentHashMap<>();
+
+
+
+		/** Stores itself into {@link #instances} and switches its {@link #created}. */
+		@Override public void onOpen(Session connection, EndpointConfig config) {
+			super.onOpen(connection, config);
+			instances.put(connection.getRequestURI().getPath(), this);
+			created.get(connection.getRequestURI().getPath()).countDown();
 		}
-		if ( !clientEndpoint.closed.await(100L, TimeUnit.MILLISECONDS)) {
-			fail("ClientEndpoint should be closed");
+
+
+
+		@Override protected boolean isServer() {
+			return true;
 		}
-		if ( !serverEndpoint.closed.await(100L, TimeUnit.MILLISECONDS)) {
-			fail("ServerEndpoint should be closed");
-		}
-		assertEquals("client close code should match",
-				expectedClientCloseCode.getCode(), clientEndpoint.closeCode.getCode());
-		assertTrue("ServerEndpoint should not receive any onError(...) calls",
-				serverEndpoint.errors.isEmpty());
-		assertTrue("ClientEndpoint should not receive any onError(...) calls",
-				clientEndpoint.errors.isEmpty());
-	}
-
-
-
-	@Test
-	public void testKeepAlive() throws Exception {
-		final var PATH = "/testKeepAlive";
-		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
-			boolean[] rttReportedHolder = {false};
-			final var pingPongPlayer = new PingPongPlayer(
-				serverEndpoint.connection,
-				-1,
-				false,
-				(connection, rttNanos) -> rttReportedHolder[0] = true
-			);
-			final var pongReceived = new CountDownLatch(1);
-			serverEndpoint.connection.removeMessageHandler(pingPongPlayer);
-			final MessageHandler.Whole<PongMessage> decoratedPongHandler = (pong) -> {
-				log.fine("server " + PATH + " got pong");
-				final var someOtherData =
-						ByteBuffer.wrap("someOtherData".getBytes(StandardCharsets.UTF_8));
-				pingPongPlayer.onMessage(() -> someOtherData);
-				pongReceived.countDown();
-			};
-			serverEndpoint.connection.addMessageHandler(PongMessage.class, decoratedPongHandler);
-
-			pingPongPlayer.sendPing(new byte[]{69});
-			try {
-				if ( !pongReceived.await(100L, TimeUnit.MILLISECONDS)) {
-					fail("pong should be received");
-				}
-			} catch (InterruptedException e) {
-				fail("test interrupted");
-			}
-			assertEquals("failure count should not increase", 0, pingPongPlayer.failureCount);
-			assertNotNull("pingPongPlayer should still be awaiting for matching pong",
-					pingPongPlayer.pingTimestampNanos);
-			assertFalse("rtt should not be reported", rttReportedHolder[0]);
-
-			serverEndpoint.connection.removeMessageHandler(decoratedPongHandler);
-
-			pingPongPlayer.sendPing(new byte[]{69});
-			assertEquals("failure count should not increase", 0, pingPongPlayer.failureCount);
-		});
-	}
-
-
-
-	@Test
-	public void testServerPingPongWithRttReporting() throws Exception {
-		final var PATH = "/testServerPingPongWithRttReporting";
-		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
-			final long[] pongNanosHolder = {0};
-			final long[] reportedRttNanosHolder = {0};
-			final var postPingVerificationsDone = new CountDownLatch(1);
-			final var pongReceived = new CountDownLatch(1);
-			final var pingPongPlayer = new PingPongPlayer(
-				serverEndpoint.connection,
-				2,
-				false,
-				(connection, rttNanos) -> reportedRttNanosHolder[0] = rttNanos
-			);
-			serverEndpoint.connection.removeMessageHandler(pingPongPlayer);
-			serverEndpoint.connection.addMessageHandler(PongMessage.class, (pong) -> {
-				log.fine("server " + PATH + " got pong, forwarding");
-				try {
-					if ( !postPingVerificationsDone.await(100L, TimeUnit.MILLISECONDS)) {
-						fail("post ping verifications should take just few ms");
-					}
-				} catch (InterruptedException ignored) {}
-				pongNanosHolder[0] = System.nanoTime();
-				pingPongPlayer.onMessage(pong);
-				pongReceived.countDown();
-			});
-			pingPongPlayer.failureCount = 1;
-
-			pingPongPlayer.sendPing("testPingData".getBytes(StandardCharsets.UTF_8));
-			final var pingNanos = System.nanoTime();
-			try {
-				assertNotNull("pingPongPlayer should be awaiting for pong",
-						pingPongPlayer.pingTimestampNanos);
-			} finally {
-				postPingVerificationsDone.countDown();
-			}
-			try {
-				if ( !pongReceived.await(100L, TimeUnit.MILLISECONDS)) {
-					fail("pong should be received");
-				}
-			} catch (InterruptedException e) {
-				fail("test interrupted");
-			}
-			assertEquals("failure count should be reset", 0, pingPongPlayer.failureCount);
-			assertNull("pingPongPlayer should not be awaiting for pong anymore",
-					pingPongPlayer.pingTimestampNanos);
-			final var rttInaccuracyNanos =
-					reportedRttNanosHolder[0] - (pongNanosHolder[0] - pingNanos);
-			log.info("RTT inaccuracy: " + rttInaccuracyNanos + "ns");
-			assertTrue(
-				"RTT should be accurately reported (" + rttInaccuracyNanos + "ns, expected <50_000"
-						+ "ns. This may fail due to CPU usage spikes by other processes, so try to "
-						+ "rerun few times, but if the failure persists it probably means a bug)",
-				rttInaccuracyNanos < 50_000
-			);
-		});
-	}
-
-
-
-	@Test
-	public void testKeepAlivePongFromClient() throws Exception {
-		final var PATH = "/testKeepAlivePongFromClient";
-		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
-			final var pongReceived = new CountDownLatch(1);
-			final var pingPongPlayer =
-					new PingPongPlayer(serverEndpoint.connection, 2, false, null);
-			serverEndpoint.connection.removeMessageHandler(pingPongPlayer);
-			serverEndpoint.connection.addMessageHandler(PongMessage.class, (pong) -> {
-				log.fine("server " + PATH + " got pong, forwarding");
-				pingPongPlayer.onMessage(pong);
-				pongReceived.countDown();
-			});
-			final var pongData = ByteBuffer.wrap("keepAlive".getBytes(StandardCharsets.UTF_8));
-
-			try {
-				clientEndpoint.connection.getAsyncRemote().sendPong(pongData);
-				if ( !pongReceived.await(100L, TimeUnit.MILLISECONDS)) {
-					fail("pong should be received");
-				}
-			} catch (InterruptedException e) {
-				fail("test interrupted");
-			} catch (IOException e) {
-				fail("unexpected connection problem " + e);
-			}
-			assertEquals("failure count should not increase", 0, pingPongPlayer.failureCount);
-			assertNull("pingPongPlayer should not be awaiting for pong",
-					pingPongPlayer.pingTimestampNanos);
-		});
-	}
-
-
-
-	@Test
-	public void testUnmatchedPongAfterPing() throws Exception {
-		final var PATH = "/testUnmatchedPong";
-		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
-			final var pongReceived = new CountDownLatch(1);
-			final var pingPongPlayer =
-					new PingPongPlayer(serverEndpoint.connection, 2, false, null);
-			serverEndpoint.connection.removeMessageHandler(pingPongPlayer);
-			serverEndpoint.connection.addMessageHandler(PongMessage.class, (pong) -> {
-				log.fine("server " + PATH + " got pong, modifying data");
-				final var someOtherData =
-						ByteBuffer.wrap("someOtherData".getBytes(StandardCharsets.UTF_8));
-				pingPongPlayer.onMessage(() -> someOtherData);
-				pongReceived.countDown();
-			});
-
-			pingPongPlayer.sendPing("originalPingData".getBytes(StandardCharsets.UTF_8));
-			try {
-				if ( !pongReceived.await(100L, TimeUnit.MILLISECONDS)) {
-					fail("pong should be received");
-				}
-			} catch (InterruptedException e) {
-				fail("test interrupted");
-			}
-			assertEquals("failure count should not increase", 0, pingPongPlayer.failureCount);
-			assertNotNull("pingPongPlayer should still be awaiting for matching pong",
-					pingPongPlayer.pingTimestampNanos);
-		});
-	}
-
-
-
-	@Test
-	public void testTimedOutPongAndFailureLimitExceeded() throws Exception {
-		final var PATH = "/testTimedOutPongAndFailureLimitExceeded";
-		performTest(PATH, false, CloseCodes.PROTOCOL_ERROR, (serverEndpoint, clientEndpoint) -> {
-			final var pingPongPlayer =
-					new PingPongPlayer(serverEndpoint.connection, 1, false, null);
-			serverEndpoint.connection.removeMessageHandler(pingPongPlayer);
-
-			pingPongPlayer.sendPing("firstPingData".getBytes(StandardCharsets.UTF_8));
-			assertNotNull("pingPongPlayer should be still awaiting for pong",
-					pingPongPlayer.pingTimestampNanos);
-			assertEquals("failure count should still be 0", 0, pingPongPlayer.failureCount);
-
-			pingPongPlayer.sendPing("secondPingData".getBytes(StandardCharsets.UTF_8));
-			assertNotNull("pingPongPlayer should be still awaiting for pong",
-					pingPongPlayer.pingTimestampNanos);
-			assertEquals("failure count should be increased", 1, pingPongPlayer.failureCount);
-
-			pingPongPlayer.sendPing("secondPingData".getBytes(StandardCharsets.UTF_8));
-		});
-	}
-
-
-
-	@Test
-	public void testServiceKeepAliveRate() throws Exception {
-		final var PATH = "/testServiceKeepAliveRate";
-		final int NUM_EXPECTED_PONGS = 5;
-		final long INTERVAL_MILLIS = 100L;
-		final var service =
-				new WebsocketPingerService(INTERVAL_MILLIS, TimeUnit.MILLISECONDS, false);
-		boolean serviceEmpty;
-		try {
-			performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
-				final var pongCounter = new AtomicInteger(0);
-				assertEquals("there should be no registered connection initially",
-						0, service.getNumberOfConnections());
-				service.addConnection(serverEndpoint.connection);
-				assertTrue("connection should be successfully added",
-						service.containsConnection(serverEndpoint.connection));
-				assertEquals("there should be 1 registered connection after adding",
-						1, service.getNumberOfConnections());
-				final var pingPongPlayer = serverEndpoint.connection.getMessageHandlers().stream()
-					.filter(PingPongPlayer.class::isInstance)
-					.map(PingPongPlayer.class::cast)
-					.findFirst()
-					.orElseThrow();
-				final var decoratedHandler = new MessageHandler.Whole<PongMessage>() {
-					@Override public void onMessage(PongMessage pong) {
-						log.fine("server " + PATH + " got pong");
-						pongCounter.incrementAndGet();
-						pingPongPlayer.onMessage(pong);
-					}
-				};
-				serverEndpoint.connection.removeMessageHandler(pingPongPlayer);
-				serverEndpoint.connection.addMessageHandler(decoratedHandler);
-				try {
-					Thread.sleep(INTERVAL_MILLIS * NUM_EXPECTED_PONGS);
-					assertTrue("connection removal should succeed",
-							service.removeConnection(serverEndpoint.connection));
-					Thread.sleep(20L);  // assumed max RTT millis
-				} catch (InterruptedException e) {
-					service.removeConnection(serverEndpoint.connection);
-					fail("test interrupted");
-				}
-				assertFalse("service should indicate that connection was removed",
-						service.containsConnection(serverEndpoint.connection));
-				assertEquals("there should be no registered connection after removing",
-						0, service.getNumberOfConnections());
-				assertEquals("correct number of pongs should be received within the timeframe",
-						NUM_EXPECTED_PONGS, pongCounter.get());
-			});
-		} finally {
-			serviceEmpty = service.stop().isEmpty();
-		}
-		// verify after finally block to not suppress earlier errors
-		assertTrue("there should be no remaining connections in the service", serviceEmpty);
-	}
-
-
-
-	@Test
-	public void testRemoveUnregisteredConnection() {
-		final var service = new WebsocketPingerService(1, false);
-		final InvocationHandler handler = (proxy, method, args) -> {
-			if (method.getDeclaringClass().equals(Object.class)) {
-				return method.invoke(this, args);
-			} else {
-				throw new UnsupportedOperationException();
-			}
-		};
-		try {
-			final Session connectionMock = (Session) Proxy.newProxyInstance(
-					getClass().getClassLoader(), new Class[]{Session.class}, handler);
-			assertFalse("removing unregistered connection should indicate no action took place",
-					service.removeConnection(connectionMock));
-		} finally {
-			service.stop();
-		}
-	}
-
-
-
-	@Test
-	public void testClientPingPong() throws Exception {
-		final var PATH = "/testClientPingPong";
-		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
-			final var postPingVerificationsDone = new CountDownLatch(1);
-			final var pongReceived = new CountDownLatch(1);
-			final var pingPongPlayer =
-					new PingPongPlayer(clientEndpoint.connection, 2, false, null);
-			clientEndpoint.connection.removeMessageHandler(pingPongPlayer);
-			clientEndpoint.connection.addMessageHandler(PongMessage.class, (pong) -> {
-				log.fine("client " + PATH + " got pong, forwarding");
-				try {
-					if ( !postPingVerificationsDone.await(100L, TimeUnit.MILLISECONDS)) {
-						fail("post ping verifications should take just few ms");
-					}
-				} catch (InterruptedException ignored) {}
-				pingPongPlayer.onMessage(pong);
-				pongReceived.countDown();
-			});
-			pingPongPlayer.failureCount = 1;
-
-			pingPongPlayer.sendPing("testPingData".getBytes(StandardCharsets.UTF_8));
-			try {
-				assertNotNull("pingPongPlayer should be awaiting for pong",
-						pingPongPlayer.pingTimestampNanos);
-			} finally {
-				postPingVerificationsDone.countDown();
-			}
-			try {
-				if ( !pongReceived.await(100L, TimeUnit.MILLISECONDS)) {
-					fail("pong should be received");
-				}
-			} catch (InterruptedException e) {
-				fail("test interrupted");
-			}
-			assertEquals("failure count should be reset", 0, pingPongPlayer.failureCount);
-			assertNull("pingPongPlayer should not be awaiting for pong anymore",
-					pingPongPlayer.pingTimestampNanos);
-		});
 	}
 
 

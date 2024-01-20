@@ -70,7 +70,7 @@ public class JettyServer extends org.eclipse.jetty.server.Server implements Webs
 
 
 	@Override
-	public void stopz() throws Exception {
+	public void shutdown() throws Exception {
 		stop();
 		join();
 		destroy();

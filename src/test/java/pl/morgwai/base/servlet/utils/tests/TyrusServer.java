@@ -46,7 +46,7 @@ public class TyrusServer implements WebsocketServer {
 
 
 	@Override
-	public void stopz() {
+	public void shutdown() {
 		if (started) tyrus.stop();
 	}
 }

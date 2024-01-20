@@ -9,7 +9,8 @@ import javax.websocket.Endpoint;
 public interface WebsocketServer {
 
 	String APP_PATH = "/test";
+
 	void startAndAddEndpoint(Class<? extends Endpoint> endpointClass, String path) throws Exception;
 	int getPort();
-	void stopz() throws Exception;
+	void shutdown() throws Exception;
 }
