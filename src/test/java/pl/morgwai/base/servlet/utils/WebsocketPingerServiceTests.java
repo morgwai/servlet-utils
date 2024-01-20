@@ -273,14 +273,14 @@ public abstract class WebsocketPingerServiceTests {
 		final var PATH = "/testServerPingPongWithRttReporting";
 		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
 			final long[] pongNanosHolder = {0};
-			final long[] rttNanosHolder = {0};
+			final long[] reportedRttNanosHolder = {0};
 			final var postPingVerificationsDone = new CountDownLatch(1);
 			final var pongReceived = new CountDownLatch(1);
 			final var pingPongPlayer = new PingPongPlayer(
 				serverEndpoint.connection,
 				2,
 				false,
-				(connection, rttNanos) -> rttNanosHolder[0] = rttNanos
+				(connection, rttNanos) -> reportedRttNanosHolder[0] = rttNanos
 			);
 			serverEndpoint.connection.removeMessageHandler(pingPongPlayer);
 			serverEndpoint.connection.addMessageHandler(PongMessage.class, (pong) -> {
@@ -290,14 +290,14 @@ public abstract class WebsocketPingerServiceTests {
 						fail("post ping verifications should take just few ms");
 					}
 				} catch (InterruptedException ignored) {}
-				pingPongPlayer.onMessage(pong);
 				pongNanosHolder[0] = System.nanoTime();
+				pingPongPlayer.onMessage(pong);
 				pongReceived.countDown();
 			});
 			pingPongPlayer.failureCount = 1;
 
-			final var pingNanos = System.nanoTime();
 			pingPongPlayer.sendPing("testPingData".getBytes(StandardCharsets.UTF_8));
+			final var pingNanos = System.nanoTime();
 			try {
 				assertNotNull("pingPongPlayer should be awaiting for pong",
 						pingPongPlayer.pingTimestampNanos);
@@ -314,18 +314,17 @@ public abstract class WebsocketPingerServiceTests {
 			assertEquals("failure count should be reset", 0, pingPongPlayer.failureCount);
 			assertNull("pingPongPlayer should not be awaiting for pong anymore",
 					pingPongPlayer.pingTimestampNanos);
-			final var measuredNanos = pongNanosHolder[0] - pingNanos;
+			final var rttInaccuracyNanos =
+					reportedRttNanosHolder[0] - (pongNanosHolder[0] - pingNanos);
+			log.info("RTT inaccuracy: " + rttInaccuracyNanos + "ns");
 			assertTrue(
-				"RTT should be accurately reported (measured: " + measuredNanos + "ns, reported: "
-						+ rttNanosHolder[0] + "ns. This may fail due to CPU usage spikes by other "
-						+ "processes, so try to rerun few times, but if the failure persists it "
-						+ "probably means a bug)",
-				pongNanosHolder[0] - pingNanos - rttNanosHolder[0] < getAllowedRttInaccuracyNanos()
+				"RTT should be accurately reported (" + rttInaccuracyNanos + "ns, expected <50_000"
+						+ "ns. This may fail due to CPU usage spikes by other processes, so try to "
+						+ "rerun few times, but if the failure persists it probably means a bug)",
+				rttInaccuracyNanos < 50_000
 			);
 		});
 	}
-
-	protected abstract long getAllowedRttInaccuracyNanos();
 
 
 

@@ -14,11 +14,4 @@ public class JettyWebsocketPingerServiceTests extends WebsocketPingerServiceTest
 	protected WebsocketServer createServer() {
 		return new JettyServer();
 	}
-
-
-
-	@Override
-	protected long getAllowedRttInaccuracyNanos() {
-		return 1_000_000L;
-	}
 }

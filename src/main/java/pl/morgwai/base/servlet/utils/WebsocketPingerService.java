@@ -329,14 +329,19 @@ public class WebsocketPingerService {
 
 
 		@Override
-		public synchronized void onMessage(PongMessage pong) {
-			if (pong.getApplicationData().equals(pingDataBuffer)) {
-				if (rttObserver != null) {
-					rttObserver.accept(connection, System.nanoTime() - pingTimestampNanos);
+		public void onMessage(PongMessage pong) {
+			final var pongTimestampNanos = System.nanoTime();
+			Long rttToReport = null;
+			synchronized (this) {
+				if (pong.getApplicationData().equals(pingDataBuffer)) {
+					rttToReport = rttObserver != null && !(/*collision*/ pingTimestampNanos == null)
+							? pongTimestampNanos - pingTimestampNanos
+							: null;
+					pingTimestampNanos = null;  // indicate the expected pong was received on time
+					failureCount = 0;
 				}
-				pingTimestampNanos = null;  // indicates that the expected pong was received on time
-				failureCount = 0;
 			}
+			if (rttToReport != null) rttObserver.accept(connection, rttToReport);
 		}
 
 
