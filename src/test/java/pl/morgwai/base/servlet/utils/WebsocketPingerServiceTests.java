@@ -70,6 +70,57 @@ public abstract class WebsocketPingerServiceTests {
 
 
 
+	@Test
+	public void testPinging1000ConnectionsDoesNotExceedMinInterval() throws Exception {
+		final var PATH = "/testPingingTime";
+		final int NUM_CONNECTIONS = 1000;
+		final long PING_DURATION_LIMIT_MILLIS = 300L;
+		final var service = new WebsocketPingerService();
+		service.stop();
+		server.startAndAddEndpoint(DumbEndpoint.class, PATH);
+		final var url = URI.create("ws://localhost:" + server.getPort() + APP_PATH + PATH);
+		final var warmupPongsReceived = new CountDownLatch(NUM_CONNECTIONS);
+		final boolean[] warmupFlag = {true};
+		try {
+			for (int i = 0; i < NUM_CONNECTIONS; i++) {
+				service.addConnection(
+					clientContainer.connectToServer(DumbEndpoint.class, null, url),
+					(connection, rttNanos) -> {
+						if (warmupFlag[0]) warmupPongsReceived.countDown();
+					}
+				);
+			}
+			log.fine("connections established, proceeding to warmup");
+			service.pingAllConnections();  // warmup
+			assertTrue("all warmup pongs should be received",
+					warmupPongsReceived.await(PING_DURATION_LIMIT_MILLIS * 5, MILLISECONDS));
+			log.fine("warmup completed, proceeding to the actual test");
+			warmupFlag[0] = false;
+
+			final var startMillis = System.currentTimeMillis();
+			service.pingAllConnections();
+			final var durationMillis = System.currentTimeMillis() - startMillis;
+			log.info("pinging " + NUM_CONNECTIONS + " connections took " + durationMillis + "ms");
+			assertTrue(
+				"pinging " + NUM_CONNECTIONS + " connections should take less than "
+						+ PING_DURATION_LIMIT_MILLIS + "ms (was " + durationMillis + "ms)",
+				durationMillis < PING_DURATION_LIMIT_MILLIS
+			);
+		} finally {
+			for (var connection: service.connectionPingPongPlayers.keySet()) {
+				try {
+					connection.close();
+				} catch (Exception ignored) {}
+			}
+		}
+	}
+
+	public static class DumbEndpoint extends Endpoint{
+		@Override public void onOpen(Session session, EndpointConfig config) {}
+	}
+
+
+
 	/**
 	 * Performs {@code test} over a websocket connection.
 	 * <ol>
@@ -310,7 +361,7 @@ public abstract class WebsocketPingerServiceTests {
 		final var PATH = "/testServiceKeepAliveRate";
 		final int NUM_EXPECTED_PONGS = 3;
 		final long INTERVAL_MILLIS = 200L;
-		final var service = new WebsocketPingerService(INTERVAL_MILLIS, MILLISECONDS, false);
+		final var service = new WebsocketPingerService(INTERVAL_MILLIS, MILLISECONDS);
 		boolean serviceEmpty;
 		try {
 			performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
