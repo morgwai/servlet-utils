@@ -42,6 +42,12 @@ public class WebsocketPingerService {
 
 
 
+	// design decision note: while it is possible to use unsolicited pongs for keep-alive-only,
+	// some ping-pong implementations confuse them with malformed pongs and close connections.
+	// Furthermore, using ping-pong allows to provide RTT reports in keep-alive-only mode also.
+
+
+
 	/** 55s as majority of proxies and NAT routers have a timeout of at least 60s. */
 	public static final int DEFAULT_INTERVAL_SECONDS = 55;
 
