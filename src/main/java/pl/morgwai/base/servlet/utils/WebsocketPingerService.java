@@ -64,8 +64,9 @@ public class WebsocketPingerService {
 	/**
 	 * Configures and starts the service in expect-timely-pongs mode: each timeout adds to a given
 	 * connection's failure count, unmatched pongs are ignored.
-	 * @param interval interval between pings and also timeout for pongs. Cannot be smaller than
-	 *     1ms.
+	 * @param interval interval between pings and also timeout for pongs. While this class does not
+	 *     enforce any hard limits, values below 100ms are probably not a good idea in most cases
+	 *     and anything below 20ms is pure Sparta.
 	 * @param unit unit for {@code interval}.
 	 * @param failureLimit limit of lost or timed-out pongs: if exceeded the given connection is
 	 *     closed with {@link CloseCodes#PROTOCOL_ERROR}. Each matching, timely pong resets the
@@ -82,7 +83,6 @@ public class WebsocketPingerService {
 		int failureLimit,
 		boolean synchronizeSending
 	) {
-		if (unit.toMillis(interval) < 1L) throw new IllegalArgumentException("interval < 1ms");
 		this.failureLimit = failureLimit;
 		this.synchronizeSending = synchronizeSending;
 		pingingTask = scheduler.scheduleAtFixedRate(this::pingAllConnections, 0L, interval, unit);
