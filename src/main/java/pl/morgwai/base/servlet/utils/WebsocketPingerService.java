@@ -168,11 +168,25 @@ public class WebsocketPingerService {
 	 * Usually called in
 	 * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig) onOpen(...)}.
 	 * <p>
-	 * {@code rttObserver} will be called by a container {@code Thread} bound by the websocket
-	 * {@code Endpoint} concurrency contract, so it must not be performing operations that may
-	 * exceed ping interval as it will block processing of the next pong.</p>
+	 * Upon receiving a pong matching the most recent ping sent to a given
+	 * {@link Session connection}, {@code rttObserver} will be invoked with the round-trip time in
+	 * nanoseconds as the second argument and the given {@link Session connection} as the first.</p>
 	 * <p>
-	 * Note: if a pong is lost or timed-out, {@code rttObserver} will not be called that time.</p>
+	 * {@code rttObserver} will be called by a container {@code Thread} bound by the websocket
+	 * {@code Endpoint} concurrency contract, so as with normal websocket event handling, it should
+	 * not be performing any long-running operations to not delay processing of subsequent events.
+	 * Particularly, if {@code rttObserver} processing or processing of any other event blocks
+	 * arrival of a pong, the corresponding RTT report will be inaccurate.</p>
+	 * <p>
+	 * If the most recent ping has timed out or has been lost, {@code rttObserver} will be called
+	 * with a negative value as the second argument upon arriving of a <u>subsequent</u> pong. This
+	 * means, that if the other side does not send pongs at all, {@code rttObserver} will not be
+	 * called at all either: this is a consequence of the requirement for {@code rttObserver} to be
+	 * called by a container {@code Thread}. If RTT reports receiving is critical for a given app,
+	 * expect-timely-pongs mode should be used to disconnect misbehaving peers.<br/>
+	 * If more than 1 ping gets lost in a row and some pong finally arrives from the other side,
+	 * the number of reports indicating loss may be smaller than the actual number of pings lost.
+	 * </p>
 	 */
 	public void addConnection(Session connection, BiConsumer<Session, Long> rttObserver) {
 		connectionPingPongPlayers.put(
@@ -278,6 +292,12 @@ public class WebsocketPingerService {
 		 * received.
 		 */
 		Long pingTimestampNanos = null;
+		/**
+		 * Raised in {@link #sendPing(byte[])} if the previous ping timed-out
+		 * ({@link #pingTimestampNanos} not {@code null}) to indicate that a loss report should be
+		 * sent to {@link #rttObserver} upon receiving a subsequent pong.
+		 */
+		boolean previousPingTimedOut = false;
 
 
 
@@ -300,12 +320,14 @@ public class WebsocketPingerService {
 
 		/** Called by the service's worker {@code  Thread}. */
 		synchronized void sendPing(byte[] pingData) {
-			if (failureLimit >= 0 && pingTimestampNanos != null) {
-				// the previous ping has timed out
-				failureCount++;
-				if (failureCount > failureLimit) {
-					closeFailedConnection("too many lost or timed-out pongs");
-					return;
+			if (pingTimestampNanos != null) {  // the previous ping has timed-out
+				previousPingTimedOut = true;  // report loss on receiving a subsequent pong
+				if (failureLimit >= 0) {  // expect-timely-pongs mode
+					failureCount++;
+					if (failureCount > failureLimit) {
+						closeFailedConnection("too many lost or timed-out pongs");
+						return;
+					}
 				}
 			}
 			pingDataBuffer = ByteBuffer.wrap(pingData);
@@ -340,8 +362,10 @@ public class WebsocketPingerService {
 		@Override
 		public void onMessage(PongMessage pong) {
 			final var pongTimestampNanos = System.nanoTime();
+			boolean reportPreviousPingTimedOut;
 			Long rttToReport = null;
 			synchronized (this) {
+				reportPreviousPingTimedOut = rttObserver != null && previousPingTimedOut;
 				if (pong.getApplicationData().equals(pingDataBuffer)) {
 					rttToReport = rttObserver != null && !(/*collision*/ pingTimestampNanos == null)
 							? pongTimestampNanos - pingTimestampNanos
@@ -350,6 +374,7 @@ public class WebsocketPingerService {
 					failureCount = 0;
 				}
 			}
+			if (reportPreviousPingTimedOut) rttObserver.accept(connection, -1L);
 			if (rttToReport != null) rttObserver.accept(connection, rttToReport);
 		}
 

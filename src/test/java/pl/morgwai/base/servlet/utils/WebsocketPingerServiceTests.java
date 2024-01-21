@@ -286,21 +286,52 @@ public abstract class WebsocketPingerServiceTests {
 	@Test
 	public void testTimedOutPongAndFailureLimitExceeded() throws Exception {
 		final var PATH = "/testTimedOutPongAndFailureLimitExceeded";
+		final var FIRST_PING = "firstPing".getBytes(UTF_8);
+		final long[] rttReport = {0};
+		final var rttReportReceived = new CountDownLatch(1);
 		performTest(PATH, false, CloseCodes.PROTOCOL_ERROR, (serverEndpoint, clientEndpoint) -> {
-			final var player = new PingPongPlayer(serverEndpoint.connection, 1, false, null);
-			serverEndpoint.connection.removeMessageHandler(player);  // pongs won't be registered
+			final var player = new PingPongPlayer(
+				serverEndpoint.connection,
+				1,
+				false,
+				(connection, rttNanos) -> {
+					rttReport[0] = rttNanos;
+					rttReportReceived.countDown();
+				}
+			) {
+				@Override public void onMessage(PongMessage pong) {
+					if (pong.getApplicationData().equals(ByteBuffer.wrap(FIRST_PING))) {
+						log.fine("server " + PATH + " got the first pong, NOT forwarding");
+					} else {
+						log.fine("server " + PATH + " got pong, modifying data");
+						super.onMessage(() -> ByteBuffer.wrap("someOtherData".getBytes(UTF_8)));
+					}
+				}
+			};
 
-			player.sendPing("firstPing".getBytes(UTF_8));
-			assertNotNull("player should be still awaiting for pong",
+			player.sendPing(FIRST_PING);
+			assertNotNull("player should be awaiting for pong",
 					player.pingTimestampNanos);
 			assertEquals("failure count should still be 0",
 					0, player.failureCount);
+			assertFalse("there should be no previous ping timeout",
+					player.previousPingTimedOut);
 
 			player.sendPing("secondPing".getBytes(UTF_8));
 			assertNotNull("player should be still awaiting for pong",
 					player.pingTimestampNanos);
 			assertEquals("failure count should be increased",
 					1, player.failureCount);
+			assertTrue("previous ping should be marked as timed-out",
+					player.previousPingTimedOut);
+			try {
+				assertTrue("rttReport should be received",
+						rttReportReceived.await(100L, MILLISECONDS));
+			} catch (InterruptedException e) {
+				fail("test interrupted");
+			}
+			assertTrue("rttReport should be negative to indicate timeout",
+					rttReport[0] < 0);
 
 			player.sendPing("thirdPing".getBytes(UTF_8));  // exceed failure limit
 		});
