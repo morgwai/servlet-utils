@@ -13,12 +13,12 @@ import java.util.function.BiConsumer;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Logger;
 
-import javax.websocket.*;
-import javax.websocket.CloseReason.CloseCode;
-import javax.websocket.CloseReason.CloseCodes;
+import jakarta.websocket.*;
+import jakarta.websocket.CloseReason.CloseCode;
+import jakarta.websocket.CloseReason.CloseCodes;
 
-import org.eclipse.jetty.websocket.javax.client.JavaxWebSocketClientContainerProvider;
-import org.eclipse.jetty.websocket.javax.common.JavaxWebSocketContainer;
+import org.eclipse.jetty.websocket.jakarta.client.JakartaWebSocketClientContainerProvider;
+import org.eclipse.jetty.websocket.jakarta.common.JakartaWebSocketContainer;
 import org.junit.*;
 import pl.morgwai.base.jul.JulFormatter;
 import pl.morgwai.base.servlet.utils.WebsocketPingerService.PingPongPlayer;
@@ -51,7 +51,7 @@ public abstract class WebsocketPingerServiceTests {
 		final var cookieManager = new CookieManager();
 		wsHttpClient = new org.eclipse.jetty.client.HttpClient();
 		wsHttpClient.setCookieStore(cookieManager.getCookieStore());
-		clientContainer = JavaxWebSocketClientContainerProvider.getContainer(wsHttpClient);
+		clientContainer = JakartaWebSocketClientContainerProvider.getContainer(wsHttpClient);
 		server = createServer();
 	}
 
@@ -61,7 +61,7 @@ public abstract class WebsocketPingerServiceTests {
 
 	@After
 	public void shutdown() throws Exception {
-		final var jettyWsContainer = ((JavaxWebSocketContainer) clientContainer);
+		final var jettyWsContainer = ((JakartaWebSocketContainer) clientContainer);
 		jettyWsContainer.stop();
 		jettyWsContainer.destroy();
 		wsHttpClient.stop();

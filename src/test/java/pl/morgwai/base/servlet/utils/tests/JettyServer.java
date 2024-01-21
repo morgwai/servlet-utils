@@ -3,15 +3,15 @@ package pl.morgwai.base.servlet.utils.tests;
 
 import java.util.Arrays;
 
-import javax.servlet.ServletContextEvent;
-import javax.servlet.ServletContextListener;
-import javax.websocket.Endpoint;
-import javax.websocket.server.ServerContainer;
-import javax.websocket.server.ServerEndpointConfig;
+import jakarta.servlet.ServletContextEvent;
+import jakarta.servlet.ServletContextListener;
+import jakarta.websocket.Endpoint;
+import jakarta.websocket.server.ServerContainer;
+import jakarta.websocket.server.ServerEndpointConfig;
 
 import org.eclipse.jetty.server.NetworkConnector;
 import org.eclipse.jetty.servlet.ServletContextHandler;
-import org.eclipse.jetty.websocket.javax.server.config.JavaxWebSocketServletContainerInitializer;
+import org.eclipse.jetty.websocket.jakarta.server.config.JakartaWebSocketServletContainerInitializer;
 
 
 
@@ -35,7 +35,7 @@ public class JettyServer extends org.eclipse.jetty.server.Server implements Webs
 			}
 		});
 		setHandler(appHandler);
-		JavaxWebSocketServletContainerInitializer.configure(
+		JakartaWebSocketServletContainerInitializer.configure(
 			appHandler,
 			(servletContainer, websocketContainer) ->
 					websocketContainer.setDefaultMaxTextMessageBufferSize(1023)
