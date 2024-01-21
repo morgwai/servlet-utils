@@ -27,8 +27,8 @@ import static java.util.concurrent.TimeUnit.SECONDS;
  * <p>
  * Instances are usually created at app startups and stored in locations easily reachable for
  * {@code Endpoint} instances or a code that manages them (for example as a
- * {@code ServletContext} attribute, a field in a class that creates client connections or on some
- * static var).<br/>
+ * {@code ServletContext} attribute, a field in a class that creates client
+ * {@link Session connections} or on some static var).<br/>
  * At app shutdowns, {@link #stop()} should be called to terminate the pinging
  * {@link ScheduledExecutorService scheduler}.</p>
  * <p>
@@ -55,6 +55,7 @@ public class WebsocketPingerService {
 	final boolean synchronizeSending;
 
 	final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+	/** Periodic on {@link #scheduler}, executes {@link #pingAllConnections()}. */
 	final ScheduledFuture<?> pingingTask;
 	final Random random = new Random();  // for ping content
 	final ConcurrentMap<Session, PingPongPlayer> connectionPingPongPlayers =
@@ -63,22 +64,23 @@ public class WebsocketPingerService {
 
 
 	/**
-	 * Configures and starts the service in expect-timely-pongs mode: each timeout adds to a given
-	 * connection's failure count, unmatched pongs are ignored.
+	 * Configures and starts the service in {@code expect-timely-pongs} mode: each timeout adds to a
+	 * given {@link Session connection}'s failure count, unmatched pongs are ignored.
 	 * @param interval interval between pings and also timeout for pongs. While this class does not
 	 *     enforce any hard limits, values below 100ms are probably not a good idea in most cases
 	 *     and anything below 20ms is pure Sparta.
 	 * @param unit unit for {@code interval}.
-	 * @param failureLimit limit of lost or timed-out pongs: if exceeded the given connection is
-	 *     closed with {@link CloseCodes#PROTOCOL_ERROR}. Each matching, timely pong resets the
-	 *     connection's failure counter.
-	 * @param synchronizeSending whether to synchronize ping sending on a given connection.
-	 *     Whether it is necessary depends on the container implementation being used. For example
-	 *     it is not necessary on Jetty, but it is on Tomcat: see
-	 *     <a href="https://bz.apache.org/bugzilla/show_bug.cgi?id=56026">this bug report</a>.<br/>
+	 * @param failureLimit limit of lost or timed-out pongs: if exceeded the given
+	 *     {@link Session connection} is closed with {@link CloseCodes#PROTOCOL_ERROR}. Each
+	 *     matching, timely pong resets the {@link Session connection}'s failure counter.
+	 * @param synchronizeSending whether to synchronize ping sending on a given
+	 *     {@link Session connection}. Whether it is necessary depends on the container
+	 *     implementation being used. For example it is not necessary on Jetty, but it is on Tomcat:
+	 *     see <a href="https://bz.apache.org/bugzilla/show_bug.cgi?id=56026">this bug report</a>.
+	 *     <br/>
 	 *     When using containers that do require such synchronization, all other message sending by
-	 *     {@code Endpoint}s must also be synchronized on the connection (please don't shoot the
-	 *     messenger...).
+	 *     {@code Endpoint}s must also be synchronized on the {@link Session connection} (please
+	 *     don't shoot the messenger...).
 	 * @throws IllegalArgumentException if {@code interval} is smaller than 1ms.
 	 */
 	public WebsocketPingerService(
@@ -92,11 +94,17 @@ public class WebsocketPingerService {
 		pingingTask = scheduler.scheduleAtFixedRate(this::pingAllConnections, 0L, interval, unit);
 	}
 
+	// design decision note: using interval as timeout simplifies things A LOT. Using a separate
+	// SHORTER duration for a timeout is still pretty feasible and may be implemented if there's
+	// enough need for it. Allowing a timeouts longer than intervals OTHO would required stacking
+	// of pings and is almost certainly not worth the effort.
+
 
 
 	/**
-	 * Configures and starts the service in keep-alive-only mode: connection will not be actively
-	 * closed unless an {@link IOException} occurs. The params have the similar meaning as in
+	 * Configures and starts the service in {@code keep-alive-only} mode:
+	 * {@link Session connections} will <b>not</b> be actively closed unless an {@link IOException}
+	 * occurs. The params have the similar meaning as in
 	 * {@link #WebsocketPingerService(long, TimeUnit, int, boolean)}.
 	 */
 	public WebsocketPingerService(long interval, TimeUnit unit, boolean synchronizeSending) {
@@ -109,7 +117,7 @@ public class WebsocketPingerService {
 	/**
 	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
 	 * WebsocketPingerService(intervalSeconds, SECONDS, failureLimit, synchronizeSending)}
-	 * (expect-timely-pongs mode).
+	 * ({@code expect-timely-pongs} mode).
 	 */
 	public WebsocketPingerService(int intervalSeconds, int failureLimit, boolean synchronizeSending)
 	{
@@ -118,35 +126,37 @@ public class WebsocketPingerService {
 	/**
 	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
 	 * WebsocketPingerService(intervalSeconds, SECONDS, failureLimit, false)}
-	 * (expect-timely-pongs mode).
+	 * ({@code expect-timely-pongs} mode).
 	 */
 	public WebsocketPingerService(int intervalSeconds, int failureLimit) {
 		this(intervalSeconds, SECONDS, failureLimit, false);
 	}
 	/**
 	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
-	 * WebsocketPingerService(interval, unit, failureLimit, false)} (expect-timely-pongs mode).
+	 * WebsocketPingerService(interval, unit, failureLimit, false)} ({@code expect-timely-pongs
+	 * } mode).
 	 */
 	public WebsocketPingerService(long interval, TimeUnit unit, int failureLimit) {
 		this(interval, unit, failureLimit, false);
 	}
 	/**
 	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
-	 * WebsocketPingerService(intervalSeconds, SECONDS, synchronizeSending)} (keep-alive-only mode).
+	 * WebsocketPingerService(intervalSeconds, SECONDS, synchronizeSending)}
+	 * ({@code keep-alive-only} mode).
 	 */
 	public WebsocketPingerService(int intervalSeconds, boolean synchronizeSending) {
 		this(intervalSeconds, SECONDS, synchronizeSending);
 	}
 	/**
 	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
-	 * WebsocketPingerService(intervalSeconds, SECONDS, false)} (keep-alive-only mode).
+	 * WebsocketPingerService(intervalSeconds, SECONDS, false)} ({@code keep-alive-only} mode).
 	 */
 	public WebsocketPingerService(int intervalSeconds) {
 		this(intervalSeconds, SECONDS, false);
 	}
 	/**
 	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
-	 * WebsocketPingerService(interval, unit, false)} (keep-alive-only mode).
+	 * WebsocketPingerService(interval, unit, false)} ({@code keep-alive-only} mode).
 	 */
 	public WebsocketPingerService(long interval, TimeUnit unit) {
 		this(interval, unit, false);
@@ -154,13 +164,22 @@ public class WebsocketPingerService {
 	/**
 	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
 	 * WebsocketPingerService}<code>({@link #DEFAULT_INTERVAL_SECONDS}, SECONDS, false)</code>
-	 * (keep-alive-only mode).
+	 * ({@code keep-alive-only} mode).
 	 */
 	public WebsocketPingerService() {
 		this(DEFAULT_INTERVAL_SECONDS, SECONDS, false);
 	}
 
 
+
+	/**
+	 * Registers {@code connection} for pinging.
+	 * Usually called in
+	 * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig) onOpen(...)}.
+	 */
+	public void addConnection(Session connection) {
+		addConnection(connection, null);
+	}
 
 	/**
 	 * Registers {@code connection} for pinging and receiving round-trip time reports via
@@ -183,7 +202,7 @@ public class WebsocketPingerService {
 	 * means, that if the other side does not send pongs at all, {@code rttObserver} will not be
 	 * called at all either: this is a consequence of the requirement for {@code rttObserver} to be
 	 * called by a container {@code Thread}. If RTT reports receiving is critical for a given app,
-	 * expect-timely-pongs mode should be used to disconnect misbehaving peers.<br/>
+	 * {@code expect-timely-pongs} mode should be used to disconnect misbehaving peers.<br/>
 	 * If more than 1 ping gets lost in a row and some pong finally arrives from the other side,
 	 * the number of reports indicating loss may be smaller than the actual number of pings lost.
 	 * </p>
@@ -195,14 +214,12 @@ public class WebsocketPingerService {
 		);
 	}
 
-	/**
-	 * Registers {@code connection} for pinging.
-	 * Usually called in
-	 * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig) onOpen(...)}.
-	 */
-	public void addConnection(Session connection) {
-		addConnection(connection, null);
-	}
+	// design decision note: it seems that in vast majority of cases it is most conveniently for
+	// developers if a receiver of RTT reports is the Endpoint instance associated with the
+	// connection which reports concern. Container Threads calling Endpoints are bound by a
+	// concurrency contract requiring that each Endpoint instance is called by at most 1 Thread at a
+	// time. Therefore it would create a lot of problems for developers if delivering  of RTT
+	// reports didn't adhere to this contract either.
 
 
 
@@ -227,7 +244,7 @@ public class WebsocketPingerService {
 
 
 
-	/** The number of currently registered connections. */
+	/** The number of currently registered {@link Session connections}. */
 	public int getNumberOfConnections() {
 		return connectionPingPongPlayers.size();
 	}
@@ -237,7 +254,7 @@ public class WebsocketPingerService {
 	/**
 	 * Stops the service.
 	 * After a call to this method the service becomes no longer usable and should be discarded.
-	 * @return connections that were registered at the time this method was called.
+	 * @return {@link Session connections} that were registered at the time this method was called.
 	 */
 	public Set<Session> stop(long timeout, TimeUnit unit) {
 		pingingTask.cancel(true);
@@ -262,7 +279,7 @@ public class WebsocketPingerService {
 
 
 
-	/** {@link #pingingTask} */
+	/** Executed periodically in {@link #scheduler}'s {@link #pingingTask} */
 	void pingAllConnections() {
 		if (connectionPingPongPlayers.isEmpty()) return;
 		final var pingData = new byte[8];  // enough to avoid collisions, but not overuse random
@@ -275,7 +292,7 @@ public class WebsocketPingerService {
 
 
 
-	/** Plays ping-pong with a single associated connection. */
+	/** Plays ping-pong with a single associated {@link Session connection}. */
 	static class PingPongPlayer implements MessageHandler.Whole<PongMessage> {
 
 		final Session connection;
@@ -284,8 +301,9 @@ public class WebsocketPingerService {
 		final boolean synchronizeSending;
 		final BiConsumer<Session, Long> rttObserver;
 
-		ByteBuffer pingDataBuffer;
 		int failureCount = 0;
+		/** Retained after the most recent ping for comparison with incoming pongs. */
+		ByteBuffer pingDataBuffer;
 		/**
 		 * Send timestamp of the most recent ping to which a matching pong has not been received
 		 * yet. {@code null} means that a matching pong to the most recent ping has been already
@@ -301,7 +319,7 @@ public class WebsocketPingerService {
 
 
 
-		/** Constructor for both modes: negative {@code failureLimit} means keep-alive-only. */
+		/** For both modes: negative {@code failureLimit} means {@code keep-alive-only}. */
 		PingPongPlayer(
 			Session connection,
 			int failureLimit,
@@ -318,7 +336,7 @@ public class WebsocketPingerService {
 
 
 
-		/** Called by the service's worker {@code  Thread}. */
+		/** Called by the {@link #scheduler}'s worker {@code  Thread}. */
 		synchronized void sendPing(byte[] pingData) {
 			if (pingTimestampNanos != null) {  // the previous ping has timed-out
 				previousPingTimedOut = true;  // report loss on receiving a subsequent pong
@@ -330,7 +348,7 @@ public class WebsocketPingerService {
 					}
 				}
 			}
-			pingDataBuffer = ByteBuffer.wrap(pingData);
+			pingDataBuffer = ByteBuffer.wrap(pingData);  // retain for comparison with pongs
 			try {
 				if (synchronizeSending) {
 					synchronized (connection) {
@@ -340,7 +358,7 @@ public class WebsocketPingerService {
 					connector.sendPing(pingDataBuffer);
 				}
 				pingTimestampNanos = System.nanoTime();
-				pingDataBuffer.rewind();  // for comparing with incoming pong data
+				pingDataBuffer.rewind();  // required for comparing: see equals() javadoc
 			} catch (IOException e) {
 				// on most container implementations the connection is PROBABLY already closed, but
 				// just in case:
@@ -359,6 +377,7 @@ public class WebsocketPingerService {
 
 
 
+		/** Called by a container {@code Thread}. */
 		@Override
 		public void onMessage(PongMessage pong) {
 			final var pongTimestampNanos = System.nanoTime();
@@ -382,7 +401,7 @@ public class WebsocketPingerService {
 
 		/**
 		 * Removes pong handler.
-		 * Called by the service on connections remaining after {@link #stop()}.
+		 * Called by the service on {@link Session connections} remaining after {@link #stop()}.
 		 */
 		void deregister() {
 			try {
