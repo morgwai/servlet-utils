@@ -75,7 +75,10 @@ public class WebsocketPingerService {
 	 * @param synchronizeSending whether to synchronize ping sending on a given connection.
 	 *     Whether it is necessary depends on the container implementation being used. For example
 	 *     it is not necessary on Jetty, but it is on Tomcat: see
-	 *     <a href="https://bz.apache.org/bugzilla/show_bug.cgi?id=56026">this bug report</a>.
+	 *     <a href="https://bz.apache.org/bugzilla/show_bug.cgi?id=56026">this bug report</a>.<br/>
+	 *     When using containers that do require such synchronization, all other message sending by
+	 *     {@code Endpoint}s must also be synchronized on the connection (please don't shoot the
+	 *     messenger...).
 	 * @throws IllegalArgumentException if {@code interval} is smaller than 1ms.
 	 */
 	public WebsocketPingerService(
