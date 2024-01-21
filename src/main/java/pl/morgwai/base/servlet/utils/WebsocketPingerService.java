@@ -173,6 +173,8 @@ public class WebsocketPingerService {
 	 * {@code rttObserver} will be called by a container {@code Thread} bound by the websocket
 	 * {@code Endpoint} concurrency contract, so it must not be performing operations that may
 	 * exceed ping interval as it will block processing of the next pong.</p>
+	 * <p>
+	 * Note: if a pong is lost or timed-out, {@code rttObserver} will not be called that time.</p>
 	 */
 	public void addConnection(Session connection, BiConsumer<Session, Long> rttObserver) {
 		connectionPingPongPlayers.put(
