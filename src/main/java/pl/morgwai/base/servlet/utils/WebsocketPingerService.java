@@ -45,13 +45,8 @@ public class WebsocketPingerService {
 	/** 55s as majority of proxies and NAT routers have a timeout of at least 60s. */
 	public static final int DEFAULT_INTERVAL_SECONDS = 55;
 
-	/** Arbitrarily chosen number. */
-	public static final int DEFAULT_FAILURE_LIMIT = 4;
 	final int failureLimit;  // negative value means keep-alive-only mode
-
 	final boolean synchronizeSending;
-
-
 
 	final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 	final ScheduledFuture<?> pingingTask;
@@ -127,14 +122,6 @@ public class WebsocketPingerService {
 		this(interval, unit, failureLimit, false);
 	}
 	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
-	 * WebsocketPingerService}<code>({@link #DEFAULT_INTERVAL_SECONDS}, SECONDS,
-	 * {@link #DEFAULT_FAILURE_LIMIT}, false)</code> (expect-timely-pongs mode).
-	 */
-	public WebsocketPingerService() {
-		this(DEFAULT_INTERVAL_SECONDS, SECONDS, DEFAULT_FAILURE_LIMIT, false);
-	}
-	/**
 	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
 	 * WebsocketPingerService(intervalSeconds, SECONDS, synchronizeSending)} (keep-alive-only mode).
 	 */
@@ -154,6 +141,19 @@ public class WebsocketPingerService {
 	 */
 	public WebsocketPingerService(long interval, TimeUnit unit) {
 		this(interval, unit, false);
+	}
+	/**
+	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
+	 * WebsocketPingerService}<code>({@link #DEFAULT_INTERVAL_SECONDS}, SECONDS,
+	 * {@link #DEFAULT_FAILURE_LIMIT}, false)</code> (expect-timely-pongs mode).
+	 * @deprecated this constructor will be switched to keep-alive-only mode in the next major
+	 *     version after #DEFAULT_FAILURE_LIMIT is removed. Use
+	 *     {@link #WebsocketPingerService(int, int)} with {@link #DEFAULT_INTERVAL_SECONDS} instead
+	 *     if you need to retain expect-timely-pongs mode.
+	 */
+	@Deprecated
+	public WebsocketPingerService() {
+		this(DEFAULT_INTERVAL_SECONDS, SECONDS, DEFAULT_FAILURE_LIMIT, false);
 	}
 
 
@@ -366,4 +366,9 @@ public class WebsocketPingerService {
 
 
 	static final Logger log = Logger.getLogger(WebsocketPingerService.class.getName());
+
+
+
+	@Deprecated(forRemoval = true)
+	public static final int DEFAULT_FAILURE_LIMIT = 4;
 }
