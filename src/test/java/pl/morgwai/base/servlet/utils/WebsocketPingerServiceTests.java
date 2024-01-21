@@ -519,7 +519,7 @@ public abstract class WebsocketPingerServiceTests {
 	public void testPinging1000ConnectionsDoesNotExceedDurationLimit() throws Exception {
 		final var PATH = "/testPingingTime";
 		final int NUM_CONNECTIONS = 1000;
-		server.startAndAddEndpoint(DumbEndpoint.class, PATH);
+		server.startAndAddEndpoint(DumbServerEndpoint.class, PATH);
 		final var url = "ws://localhost:" + server.getPort() + APP_PATH + PATH;
 		testPingingDoesNotExceedDurationLimit(
 				clientContainer, PING_DURATION_LIMIT_MILLIS, NUM_CONNECTIONS, url);
@@ -544,7 +544,7 @@ public abstract class WebsocketPingerServiceTests {
 				final var url = URI.create(urlString);
 				for (int i = 0; i < connectionsPerUrl; i++) {
 					service.addConnection(
-							clientContainer.connectToServer(DumbEndpoint.class, null, url));
+							clientContainer.connectToServer(new DumbEndpoint(service), null, url));
 				}
 				log.fine("established " + connectionsPerUrl + " connections to " + url);
 			}
@@ -575,8 +575,24 @@ public abstract class WebsocketPingerServiceTests {
 		}
 	}
 
-	public static class DumbEndpoint extends Endpoint{
-		@Override public void onOpen(Session session, EndpointConfig config) {}
+	public static class DumbEndpoint extends Endpoint {
+
+		final WebsocketPingerService pingerService;
+
+		public DumbEndpoint(WebsocketPingerService pingerService) {
+			this.pingerService = pingerService;
+		}
+
+		@Override public void onOpen(Session connection, EndpointConfig config) {}
+
+		@Override public void onClose(Session connection, CloseReason closeReason) {
+			log.finer("removing connection " + connection.getId() + " from service");
+			pingerService.removeConnection(connection);
+		}
+	}
+
+	public static class DumbServerEndpoint extends Endpoint {
+		@Override public void onOpen(Session connection, EndpointConfig config) {}
 	}
 
 
