@@ -179,8 +179,10 @@ public abstract class WebsocketPingerServiceTests {
 				@Override public void onMessage(PongMessage pong) {
 					log.fine("server " + PATH + " got pong, forwarding");
 					try {
-						postPingVerificationsDone.await(100L, MILLISECONDS);
-					} catch (InterruptedException ignored) {}
+						assertTrue(postPingVerificationsDone.await(100L, MILLISECONDS));
+					} catch (InterruptedException e) {
+						fail();
+					}
 					pongNanosHolder[0] = System.nanoTime();
 					super.onMessage(pong);
 					pongReceived.countDown();
@@ -399,8 +401,10 @@ public abstract class WebsocketPingerServiceTests {
 				@Override public void onMessage(PongMessage pong) {
 					log.fine("client " + PATH + " got pong, forwarding");
 					try {
-						postPingVerificationsDone.await(100L, MILLISECONDS);
-					} catch (InterruptedException ignored) {}
+						assertTrue(postPingVerificationsDone.await(100L, MILLISECONDS));
+					} catch (InterruptedException e) {
+						fail();
+					}
 					super.onMessage(pong);
 					pongReceived.countDown();
 				}
