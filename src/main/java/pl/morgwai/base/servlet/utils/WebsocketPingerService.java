@@ -152,17 +152,12 @@ public class WebsocketPingerService {
 		this(interval, unit, false);
 	}
 	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
-	 * WebsocketPingerService}<code>({@link #DEFAULT_INTERVAL_SECONDS}, SECONDS,
-	 * {@link #DEFAULT_FAILURE_LIMIT}, false)</code> (expect-timely-pongs mode).
-	 * @deprecated this constructor will be switched to keep-alive-only mode in the next major
-	 *     version after #DEFAULT_FAILURE_LIMIT is removed. Use
-	 *     {@link #WebsocketPingerService(int, int)} with {@link #DEFAULT_INTERVAL_SECONDS} instead
-	 *     if you need to retain expect-timely-pongs mode.
+	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
+	 * WebsocketPingerService}<code>({@link #DEFAULT_INTERVAL_SECONDS}, SECONDS, false)</code>
+	 * (keep-alive-only mode).
 	 */
-	@Deprecated
 	public WebsocketPingerService() {
-		this(DEFAULT_INTERVAL_SECONDS, SECONDS, DEFAULT_FAILURE_LIMIT, false);
+		this(DEFAULT_INTERVAL_SECONDS, SECONDS, false);
 	}
 
 
@@ -377,9 +372,4 @@ public class WebsocketPingerService {
 
 
 	static final Logger log = Logger.getLogger(WebsocketPingerService.class.getName());
-
-
-
-	@Deprecated(forRemoval = true)
-	public static final int DEFAULT_FAILURE_LIMIT = 4;
 }
