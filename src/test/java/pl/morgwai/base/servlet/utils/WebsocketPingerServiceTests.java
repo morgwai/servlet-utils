@@ -26,6 +26,7 @@ import pl.morgwai.base.servlet.utils.tests.WebsocketServer;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static java.util.logging.Level.FINEST;
 import static java.util.logging.Level.WARNING;
 
@@ -573,7 +574,7 @@ public abstract class WebsocketPingerServiceTests {
 		int connectionsPerUrl,
 		String... urls
 	) throws Exception {
-		final var service = new WebsocketPingerService(1);
+		final var service = new WebsocketPingerService(1L, SECONDS);
 		try {
 			for (var urlString: urls) {
 				final var url = URI.create(urlString);

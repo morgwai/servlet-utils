@@ -21,8 +21,8 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 /**
  * Automatically pings and handles pongs from websocket {@link Session connections}.
  * Depending on constructor used, operates in either
- * {@link #WebsocketPingerService(int, int, boolean) expect-timely-pongs mode} or
- * {@link #WebsocketPingerService(int, boolean) keep-alive-only mode}.
+ * {@link #WebsocketPingerService(long, TimeUnit, int, boolean) expect-timely-pongs mode} or
+ * {@link #WebsocketPingerService(long, TimeUnit, boolean) keep-alive-only mode}.
  * The service can be used both on the client and the server side.
  * <p>
  * Instances are usually created at app startups and stored in locations easily reachable for
@@ -94,6 +94,15 @@ public class WebsocketPingerService {
 		pingingTask = scheduler.scheduleAtFixedRate(this::pingAllConnections, 0L, interval, unit);
 	}
 
+	/**
+	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
+	 * WebsocketPingerService(interval, unit, failureLimit, false)}
+	 * ({@code expect-timely-pongs} mode).
+	 */
+	public WebsocketPingerService(long interval, TimeUnit unit, int failureLimit) {
+		this(interval, unit, failureLimit, false);
+	}
+
 	// design decision note: using interval as timeout simplifies things A LOT. Using a separate
 	// SHORTER duration for a timeout is still pretty feasible and may be implemented if there's
 	// enough need for it. Allowing a timeouts longer than intervals OTHO would required stacking
@@ -111,49 +120,6 @@ public class WebsocketPingerService {
 		this(interval, unit, -1, synchronizeSending);
 	}
 
-
-
-	// block of constructor variants using some default values:
-	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
-	 * WebsocketPingerService(intervalSeconds, SECONDS, failureLimit, synchronizeSending)}
-	 * ({@code expect-timely-pongs} mode).
-	 */
-	public WebsocketPingerService(int intervalSeconds, int failureLimit, boolean synchronizeSending)
-	{
-		this(intervalSeconds, SECONDS, failureLimit, synchronizeSending);
-	}
-	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
-	 * WebsocketPingerService(intervalSeconds, SECONDS, failureLimit, false)}
-	 * ({@code expect-timely-pongs} mode).
-	 */
-	public WebsocketPingerService(int intervalSeconds, int failureLimit) {
-		this(intervalSeconds, SECONDS, failureLimit, false);
-	}
-	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, boolean)
-	 * WebsocketPingerService(interval, unit, failureLimit, false)} ({@code expect-timely-pongs
-	 * } mode).
-	 */
-	public WebsocketPingerService(long interval, TimeUnit unit, int failureLimit) {
-		this(interval, unit, failureLimit, false);
-	}
-	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
-	 * WebsocketPingerService(intervalSeconds, SECONDS, synchronizeSending)}
-	 * ({@code keep-alive-only} mode).
-	 */
-	public WebsocketPingerService(int intervalSeconds, boolean synchronizeSending) {
-		this(intervalSeconds, SECONDS, synchronizeSending);
-	}
-	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
-	 * WebsocketPingerService(intervalSeconds, SECONDS, false)} ({@code keep-alive-only} mode).
-	 */
-	public WebsocketPingerService(int intervalSeconds) {
-		this(intervalSeconds, SECONDS, false);
-	}
 	/**
 	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
 	 * WebsocketPingerService(interval, unit, false)} ({@code keep-alive-only} mode).
@@ -161,6 +127,7 @@ public class WebsocketPingerService {
 	public WebsocketPingerService(long interval, TimeUnit unit) {
 		this(interval, unit, false);
 	}
+
 	/**
 	 * Calls {@link #WebsocketPingerService(long, TimeUnit, boolean)
 	 * WebsocketPingerService}<code>({@link #DEFAULT_INTERVAL_SECONDS}, SECONDS, false)</code>
