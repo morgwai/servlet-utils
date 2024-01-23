@@ -9,6 +9,7 @@ import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Logger;
@@ -24,9 +25,9 @@ import pl.morgwai.base.jul.JulFormatter;
 import pl.morgwai.base.servlet.utils.WebsocketPingerService.PingPongPlayer;
 import pl.morgwai.base.servlet.utils.tests.WebsocketServer;
 
+import static java.lang.Math.max;
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
-import static java.util.concurrent.TimeUnit.SECONDS;
+import static java.util.concurrent.TimeUnit.*;
 import static java.util.logging.Level.FINEST;
 import static java.util.logging.Level.WARNING;
 
@@ -564,7 +565,7 @@ public abstract class WebsocketPingerServiceTests {
 	/**
 	 * Note: when both the client and the server are on the same host, the limiting factor seems to
 	 * be <i>replying to pings</i>. See {@link WebsocketPingerServiceExternalTests} where the
-	 * service performs ~4x better when pinging external servers.
+	 * service performs ~10x better when pinging external servers.
 	 */
 	static final long PING_DURATION_LIMIT_MILLIS = 300L;
 
@@ -574,23 +575,33 @@ public abstract class WebsocketPingerServiceTests {
 		int connectionsPerUrl,
 		String... urls
 	) throws Exception {
-		final var service = new WebsocketPingerService(1L, SECONDS);
+		final var service = new WebsocketPingerService(500L, MILLISECONDS);
 		try {
+			final var totalConnections = connectionsPerUrl * urls.length;
+			final CountDownLatch[] pongsReceived = {null};
+			final var maxRtt = new AtomicLong(0L);
 			for (var urlString: urls) {
 				final var url = URI.create(urlString);
 				for (int i = 0; i < connectionsPerUrl; i++) {
 					service.addConnection(
-							clientContainer.connectToServer(new DumbEndpoint(service), null, url));
+						clientContainer.connectToServer(new DumbEndpoint(service), null, url),
+						(connection, rttNanos) -> {
+							maxRtt.getAndUpdate(currentMax -> max(currentMax, rttNanos));
+							if (pongsReceived[0] != null) pongsReceived[0].countDown();
+						}
+					);
 				}
 				log.fine("established " + connectionsPerUrl + " connections to " + url);
 			}
 			service.pingingTask.cancel(true);
-			final var totalConnections = connectionsPerUrl * urls.length;
 			assertEquals("correct number of connections should be registered",
 					totalConnections, service.getNumberOfConnections());
 			log.fine("established all " + totalConnections + " connections");
-			Thread.sleep(100L);  // let all the old pongs arrive so that connections are "clean"
+			Thread.sleep(500L); // UGLY UGLY but I'm lazy: wait for the old pongs to come down
+			log.info("max RTT during connecting: " + NANOSECONDS.toMillis(maxRtt.get()) + "ms");
+			maxRtt.set(0L);
 
+			pongsReceived[0] = new CountDownLatch(totalConnections);
 			final var startMillis = System.currentTimeMillis();
 			service.pingAllConnections();
 			final var durationMillis = System.currentTimeMillis() - startMillis;
@@ -600,7 +611,12 @@ public abstract class WebsocketPingerServiceTests {
 						+ durationLimitMillis + "ms (was " + durationMillis + "ms)",
 				durationMillis < durationLimitMillis
 			);
-			Thread.sleep(100L);  // let the pong come out of politeness ;)
+
+			assertTrue("all pongs should be received",
+					pongsReceived[0].await(5000L, MILLISECONDS));
+			final var pongDurationMillis = System.currentTimeMillis() - startMillis;
+			log.info("whole ping-pong took " + pongDurationMillis + "ms, max RTT: "
+					+ NANOSECONDS.toMillis(maxRtt.get()) + "ms");
 		} finally {
 			log.fine("closing " + service.getNumberOfConnections() + " connections");
 			for (var connection: service.stop()) {
