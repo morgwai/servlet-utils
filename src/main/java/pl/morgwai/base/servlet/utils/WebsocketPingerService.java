@@ -23,9 +23,10 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 /**
  * Automatically pings and handles pongs from websocket {@link Session connections}.
  * Depending on constructor used, operates in either
- * {@link #WebsocketPingerService(long, TimeUnit, int, String, boolean) expect-timely-pongs mode} or
- * {@link #WebsocketPingerService(long, TimeUnit, String, boolean) keep-alive-only mode}.
- * The service can be used both on the client and the server side.
+ * {@link #WebsocketPingerService(long, TimeUnit, int, String, ScheduledExecutorService, boolean)
+ * expect-timely-pongs mode} or
+ * {@link #WebsocketPingerService(long, TimeUnit, String, ScheduledExecutorService, boolean)
+ * keep-alive-only mode}. The service can be used both on the client and the server side.
  * <p>
  * Instances are usually created at app startups and stored in locations easily reachable for
  * {@code Endpoint} instances or a code that manages them (for example as a
@@ -61,7 +62,7 @@ public class WebsocketPingerService {
 	final int failureLimit;  // negative value means keep-alive-only mode
 	final boolean synchronizeSending;
 
-	final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+	final ScheduledExecutorService scheduler;
 	/** Periodic on {@link #scheduler}, executes {@link #pingAllConnections()}. */
 	final ScheduledFuture<?> pingingTask;
 	final ConcurrentMap<Session, PingPongPlayer> connectionPingPongPlayers =
@@ -84,6 +85,8 @@ public class WebsocketPingerService {
 	 *     {@link MessageDigest#getDigestLength() the length of produced hashes} must not exceed
 	 *     {@code (125 - (2 * Long.BYTES))} bytes, otherwise an {@link IllegalArgumentException}
 	 *     will be thrown.
+	 * @param scheduler used for scheduling pings. Upon a call to {@link #stop()}, {@code scheduler}
+	 *     will be {@link ScheduledExecutorService#shutdown() shutdown}.
 	 * @param synchronizeSending whether to synchronize ping sending on a given
 	 *     {@link Session connection}. Whether it is necessary depends on the container
 	 *     implementation being used. For example it is not necessary on Jetty, but it is on Tomcat:
@@ -100,12 +103,14 @@ public class WebsocketPingerService {
 		TimeUnit unit,
 		int failureLimit,
 		String hashFunction,
+		ScheduledExecutorService scheduler,
 		boolean synchronizeSending
 	) {
 		this.timeoutNanos = unit.toNanos(interval);
 		this.failureLimit = failureLimit;
 		this.synchronizeSending = synchronizeSending;
 		this.hashFunction = hashFunction;
+		this.scheduler = scheduler;
 		final MessageDigest testInstance;
 		try {
 			testInstance = MessageDigest.getInstance(hashFunction);
@@ -119,16 +124,24 @@ public class WebsocketPingerService {
 	}
 
 	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, String, boolean)
-	 * WebsocketPingerService}<code>(interval, unit, failureLimit, {@value #DEFAULT_HASH_FUNCTION},
-	 * false)</code> ({@code expect-timely-pongs} mode).
+	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, String, ScheduledExecutorService,
+	 * boolean) WebsocketPingerService} <code>(interval, unit, failureLimit,
+	 * {@value #DEFAULT_HASH_FUNCTION}, {@link #newDefaultScheduler()}, false)</code>
+	 * ({@code expect-timely-pongs} mode).
 	 */
 	public WebsocketPingerService(
 		long interval,
 		TimeUnit unit,
 		int failureLimit
 	) {
-		this(interval, unit, failureLimit, DEFAULT_HASH_FUNCTION, false);
+		this(
+			interval,
+			unit,
+			failureLimit,
+			DEFAULT_HASH_FUNCTION,
+			newDefaultScheduler(),
+			false
+		);
 	}
 
 	// design decision note: using interval as a timeout simplifies things A LOT. Using a separate
@@ -141,34 +154,44 @@ public class WebsocketPingerService {
 	/**
 	 * Configures and starts the service in {@code keep-alive-only} mode:
 	 * {@link Session connections} will <b>not</b> be actively closed unless an {@link IOException}
-	 * occurs. The params have the similar meaning as in
-	 * {@link #WebsocketPingerService(long, TimeUnit, int, String, boolean)}.
+	 * occurs. The params have the similar meaning as in {@link #WebsocketPingerService(long,
+	 * TimeUnit, int, String, ScheduledExecutorService, boolean)}.
 	 */
 	public WebsocketPingerService(
 		long interval,
 		TimeUnit unit,
 		String hashFunction,
+		ScheduledExecutorService scheduler,
 		boolean synchronizeSending
 	) {
-		this(interval, unit, -1, hashFunction, synchronizeSending);
+		this(interval, unit, -1, hashFunction, scheduler, synchronizeSending);
 	}
 
 	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, String, boolean)
-	 * WebsocketPingerService}<code>(interval, unit, {@value #DEFAULT_HASH_FUNCTION}, false)</code>
-	 * ({@code keep-alive-only} mode).
+	 * Calls
+	 * {@link #WebsocketPingerService(long, TimeUnit, String, ScheduledExecutorService, boolean)
+	 * WebsocketPingerService}<code>(interval, unit, {@value #DEFAULT_HASH_FUNCTION},
+	 * {@link #newDefaultScheduler()}, false)</code> ({@code keep-alive-only} mode).
 	 */
 	public WebsocketPingerService(long interval, TimeUnit unit) {
-		this(interval, unit, DEFAULT_HASH_FUNCTION, false);
+		this(interval, unit, DEFAULT_HASH_FUNCTION, newDefaultScheduler(), false);
 	}
 
 	/**
-	 * Calls {@link #WebsocketPingerService(long, TimeUnit, String, boolean)
+	 * Calls
+	 * {@link #WebsocketPingerService(long, TimeUnit, String, ScheduledExecutorService, boolean)
 	 * WebsocketPingerService}<code>({@link #DEFAULT_INTERVAL_SECONDS}, SECONDS,
-	 * {@value #DEFAULT_HASH_FUNCTION}, false)</code> ({@code keep-alive-only} mode).
+	 * {@value #DEFAULT_HASH_FUNCTION}, {@link #newDefaultScheduler()}, false)</code>
+	 * ({@code keep-alive-only} mode).
 	 */
 	public WebsocketPingerService() {
-		this(DEFAULT_INTERVAL_SECONDS, SECONDS, DEFAULT_HASH_FUNCTION, false);
+		this(
+			DEFAULT_INTERVAL_SECONDS,
+			SECONDS,
+			DEFAULT_HASH_FUNCTION,
+			newDefaultScheduler(),
+			false
+		);
 	}
 
 
@@ -445,6 +468,16 @@ public class WebsocketPingerService {
 				// throw a RuntimeException in case of any operation on a closed connection
 			}
 		}
+	}
+
+
+
+	/**
+	 * Returns {@link Executors#newScheduledThreadPool(int)
+	 * Executors.newScheduledThreadPool}({@link Runtime#availableProcessors() availableProcessors}).
+	 */
+	public static ScheduledExecutorService newDefaultScheduler() {
+		return Executors.newScheduledThreadPool(Runtime.getRuntime().availableProcessors());
 	}
 
 
