@@ -77,7 +77,7 @@ public class WebsocketPingerService {
 	 *     enforce any hard limits, values below 100ms are probably not a good idea in most cases
 	 *     and anything below 20ms is pure Sparta.
 	 * @param unit unit for {@code interval}.
-	 * @param failureLimit limit of lost or timed-out pongs: if exceeded the given
+	 * @param failureLimit limit of lost or timed-out pongs: if exceeded, then the given
 	 *     {@link Session connection} is closed with {@link CloseCodes#PROTOCOL_ERROR}. Each
 	 *     matching, timely pong resets the {@link Session connection}'s failure counter.
 	 * @param hashFunction name of the {@link MessageDigest} to use for ping content hashing. This
@@ -146,16 +146,17 @@ public class WebsocketPingerService {
 
 	// design decision note: using interval as a timeout simplifies things A LOT. Using a separate
 	// SHORTER duration for a timeout is still pretty feasible and may be implemented if there's
-	// enough need for it. Allowing a timeouts longer than intervals OTOH would require stacking
-	// of pings and is almost certainly not worth the effort.
+	// enough need for it. Allowing a timeouts longer than intervals OTOH would require scheduling
+	// of on-time-out actions and is almost certainly not worth the effort.
 
 
 
 	/**
 	 * Configures and starts the service in {@code keep-alive-only} mode:
 	 * {@link Session connections} will <b>not</b> be actively closed unless an {@link IOException}
-	 * occurs. The params have the similar meaning as in {@link #WebsocketPingerService(long,
-	 * TimeUnit, int, String, ScheduledExecutorService, boolean)}.
+	 * occurs or matching pongs are received in a nonconsecutive order. The params have the similar
+	 * meaning as in {@link
+	 * #WebsocketPingerService(long, TimeUnit, int, String, ScheduledExecutorService, boolean)}.
 	 */
 	public WebsocketPingerService(
 		long interval,
@@ -211,25 +212,19 @@ public class WebsocketPingerService {
 	 * Usually called in
 	 * {@link javax.websocket.Endpoint#onOpen(Session, javax.websocket.EndpointConfig) onOpen(...)}.
 	 * <p>
-	 * Upon receiving a pong matching the most recent ping sent to a given
+	 * Upon receiving a pong matching the next consecutive unanswered ping sent to a given
 	 * {@link Session connection}, {@code rttObserver} will be invoked with the round-trip time in
 	 * nanoseconds as the second argument and the given {@link Session connection} as the first.</p>
+	 * <p>
+	 * Note, that if the other side does not reply with pongs at all, {@code rttObserver} will not
+	 * be called at all either. If RTT report receiving is critical for a given app,
+	 * {@code expect-timely-pongs} mode should be used to disconnect misbehaving peers.</p>
 	 * <p>
 	 * {@code rttObserver} will be called by a container {@code Thread} bound by the websocket
 	 * {@code Endpoint} concurrency contract, so as with normal websocket event handling, it should
 	 * not be performing any long-running operations to not delay processing of subsequent events.
 	 * Particularly, if {@code rttObserver} processing or processing of any other event blocks
 	 * arrival of a pong, the corresponding RTT report will be inaccurate.</p>
-	 * <p>
-	 * If the most recent ping has timed out or has been lost, {@code rttObserver} will be called
-	 * with a negative value as the second argument upon arriving of a <u>subsequent</u> pong. This
-	 * means, that if the other side does not send pongs at all, {@code rttObserver} will not be
-	 * called at all either: this is a consequence of the requirement for {@code rttObserver} to be
-	 * called by a container {@code Thread}. If RTT reports receiving is critical for a given app,
-	 * {@code expect-timely-pongs} mode should be used to disconnect misbehaving peers.<br/>
-	 * If more than 1 ping gets lost in a row and some pong finally arrives from the other side,
-	 * the number of reports indicating loss may be smaller than the actual number of pings lost.
-	 * </p>
 	 */
 	public void addConnection(Session connection, BiConsumer<Session, Long> rttObserver) {
 		connectionPingPongPlayers.put(
@@ -335,12 +330,8 @@ public class WebsocketPingerService {
 		final ByteBuffer pingDataBuffer;
 
 		int failureCount = 0;
-		/**
-		 * Send timestamp of the most recent ping to which a matching pong has not been received
-		 * yet. {@code null} means that a matching pong to the most recent ping has been already
-		 * received.
-		 */
-		boolean awaitingPong = false;
+		long pingSequence = 0L;
+		long lastPongReceived = 0L;
 
 
 
@@ -364,36 +355,46 @@ public class WebsocketPingerService {
 			} catch (NoSuchAlgorithmException neverHappens) { // verified by the service constructor
 				throw new RuntimeException(neverHappens);
 			}
-			hashInputBuffer = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
-			pingDataBuffer = ByteBuffer.allocate(Long.BYTES + this.hashFunction.getDigestLength());
+			hashInputBuffer = ByteBuffer.allocate(Long.BYTES * 2 + Integer.BYTES);
+			pingDataBuffer =
+					ByteBuffer.allocate(Long.BYTES * 2 + this.hashFunction.getDigestLength());
 			connection.addMessageHandler(PongMessage.class, this);
 		}
 
 
 
 		/**
-		 * Sends a ping containing its "signed" timestamp.
-		 * The exact content is:<pre>{@code
-		 * pingTimestampBytes + hashFunction(this.identityHashCodeBytes() + pingTimestampBytes)
-		 * }</pre>
-		 * Called by the {@link #scheduler}'s worker {@code  Thread}.
+		 * Sends a ping containing its "signed" sequence number and timestamp.
+		 * In case of {@code expect-timely-pongs} mode, if the previous ping timed-out, then
+		 * increments {@link #failureCount} and if it exceeds {@link #failureLimit}, then closes the
+		 * connection.
+		 * <p>
+		 * Called by {@link #scheduler}'s worker {@code  Thread}s.</p>
+		 * <p>
+		 * The exact structure of a ping data:</p>
+		 * <pre>{@code
+		 * pingSequenceBytes + pingTimestampBytes + hashFunction(
+		 *         this.identityHashCodeBytes() + pingSequenceBytes + pingTimestampBytes)}</pre>
+		 * <p>
+		 * ({@code +} denotes byte sequence concatenation)</p>
 		 */
 		synchronized void sendPing() {
-			if (awaitingPong) {  // the previous ping has timed-out
-				if (failureLimit >= 0) {  // expect-timely-pongs mode
-					failureCount++;
-					if (failureCount > failureLimit) {
-						closeFailedConnection("too many lost or timed-out pongs");
-						return;
-					}
+			if (failureLimit >= 0 && pingSequence > lastPongReceived) {
+				// expect-timely-pongs mode && the previous ping timed-out
+				failureCount++;
+				if (failureCount > failureLimit) {
+					closeFailedConnection("too many timed-out pongs");
+					return;
 				}
 			}
 
-			awaitingPong = true;
+			pingSequence++;
 			final var pingTimestampNanos = System.nanoTime();
 			hashInputBuffer.putInt(System.identityHashCode(this));
+			hashInputBuffer.putLong(pingSequence);
 			hashInputBuffer.putLong(pingTimestampNanos);
 			hashInputBuffer.rewind();
+			pingDataBuffer.putLong(pingSequence);
 			pingDataBuffer.putLong(pingTimestampNanos);
 			pingDataBuffer.put(hashFunction.digest(hashInputBuffer.array()));
 			pingDataBuffer.rewind();
@@ -405,13 +406,15 @@ public class WebsocketPingerService {
 				} else {
 					connector.sendPing(pingDataBuffer);
 				}
-				pingDataBuffer.rewind();  // required for comparing: see equals() javadoc
+				pingDataBuffer.rewind();  // prepare for the next ping
 			} catch (IOException e) {
 				// on most container implementations the connection is PROBABLY already closed, but
 				// just in case:
 				closeFailedConnection("failed to send ping");
 			}
 		}
+
+
 
 		private void closeFailedConnection(String reason) {
 			if (log.isLoggable(Level.FINE)) {
@@ -432,23 +435,28 @@ public class WebsocketPingerService {
 			synchronized (this) {
 				try {
 					final var pongData = pong.getApplicationData();
+					final var pongNumber = pongData.getLong();
 					final var timestampFromPong = pongData.getLong();
-					if (hasValidSignature(pongData, timestampFromPong)) {
-						final var rttNanos = pongTimestampNanos - timestampFromPong;
-						rttToReport = rttObserver != null
-								? rttNanos : null;
-						if (rttNanos <= timeoutNanos) {
-							awaitingPong = false;
-							failureCount = 0;
+					if (hasValidSignature(pongData, pongNumber, timestampFromPong)) {
+						if (pongNumber != lastPongReceived + 1L) {
+							// As websocket connection is over a reliable transport layer (TCP or
+							// HTTP/3) nonconsecutive pongs are a symptom of a faulty implementation
+							closeFailedConnection("nonconsecutive pong");
+							return;
 						}
-					}
-				} catch (BufferUnderflowException ignored) {}  // unsolicited pong
+						lastPongReceived++;
+						final var rttNanos = pongTimestampNanos - timestampFromPong;
+						rttToReport = (rttObserver != null) ? rttNanos : null;
+						if (rttNanos <= timeoutNanos) failureCount = 0;
+					}  // else: unsolicited pong
+				} catch (BufferUnderflowException ignored) {}  // unsolicited pong with small data
 			}
 			if (rttToReport != null) rttObserver.accept(connection, rttToReport);
 		}
 
-		boolean hasValidSignature(ByteBuffer pongData, long timestampFromPong) {
+		boolean hasValidSignature(ByteBuffer pongData, long pongNumber, long timestampFromPong) {
 			hashInputBuffer.putInt(System.identityHashCode(this));
+			hashInputBuffer.putLong(pongNumber);
 			hashInputBuffer.putLong(timestampFromPong);
 			hashInputBuffer.rewind();
 			return pongData.equals(ByteBuffer.wrap(hashFunction.digest(hashInputBuffer.array())));

@@ -156,7 +156,7 @@ public abstract class WebsocketPingerServiceTests {
 			assertEquals("failure count should not increase",
 					0, player.failureCount);
 			assertTrue("player should still be awaiting for matching pong",
-					player.awaitingPong);
+					player.pingSequence > player.lastPongReceived);
 			assertFalse("rtt should not be reported",
 					rttReportedHolder[0]);
 
@@ -206,7 +206,7 @@ public abstract class WebsocketPingerServiceTests {
 			}
 			try {
 				assertTrue("player should be awaiting for pong",
-						player.awaitingPong);
+						player.pingSequence > player.lastPongReceived);
 			} finally {
 				postPingVerificationsDone.countDown();
 			}
@@ -218,8 +218,8 @@ public abstract class WebsocketPingerServiceTests {
 			}
 			assertEquals("failure count should be reset",
 					0, player.failureCount);
-			assertFalse("player should not be awaiting for pong anymore",
-					player.awaitingPong);
+			assertEquals("player should not be awaiting for pong anymore",
+					player.pingSequence, player.lastPongReceived);
 			final var rttInaccuracyNanos =
 					pongNanosHolder[0] - pingNanos - reportedRttNanosHolder[0];
 			log.info("RTT inaccuracy: " + rttInaccuracyNanos + "ns");
@@ -266,8 +266,8 @@ public abstract class WebsocketPingerServiceTests {
 			}
 			assertEquals("failure count should not increase",
 					0, player.failureCount);
-			assertFalse("player should not be awaiting for pong",
-					player.awaitingPong);
+			assertEquals("player should not be awaiting for pong",
+					player.pingSequence, player.lastPongReceived);
 		});
 	}
 
@@ -303,7 +303,7 @@ public abstract class WebsocketPingerServiceTests {
 			assertEquals("failure count should not increase",
 					0, player.failureCount);
 			assertTrue("player should still be awaiting for matching pong",
-					player.awaitingPong);
+					player.pingSequence > player.lastPongReceived);
 		});
 	}
 
@@ -312,7 +312,6 @@ public abstract class WebsocketPingerServiceTests {
 	@Test
 	public void testTimedOutPongAndFailureLimitExceeded() throws Exception {
 		final var PATH = "/testTimedOutPongAndFailureLimitExceeded";
-		final long[] rttReport = {0};
 		final var postPingVerificationsDone = new CountDownLatch(1);
 		final var rttReportReceived = new CountDownLatch(1);
 		performTest(PATH, false, CloseCodes.PROTOCOL_ERROR, (serverEndpoint, clientEndpoint) -> {
@@ -321,39 +320,43 @@ public abstract class WebsocketPingerServiceTests {
 				10L,
 				1,
 				false,
-				(connection, rttNanos) -> {
-					rttReport[0] = rttNanos;
-					rttReportReceived.countDown();
-				},
+				(connection, rttNanos) -> rttReportReceived.countDown(),
 				DEFAULT_HASH_FUNCTION
 			) {
-				PongMessage firstPong = null;
+				byte[] savedPongData = null;
 
 				@Override public void onMessage(PongMessage pong) {
-					if (firstPong == null) {
-						log.fine("server " + PATH + " got the first pong, NOT forwarding");
-						firstPong = pong;
+					if (savedPongData == null) {
+						log.fine("server " + PATH + " got pong, NOT forwarding, saving for later");
+						savedPongData = new byte[Long.BYTES * 2 + hashFunction.getDigestLength()];
+						pong.getApplicationData().get(savedPongData);
 					} else {
-						log.fine("server " + PATH + " got pong, sending timed-out first instead");
 						try {
 							assertTrue(postPingVerificationsDone.await(100L, MILLISECONDS));
 						} catch (InterruptedException e) {
 							fail();
 						}
-						super.onMessage(firstPong);
+						log.fine("server " + PATH
+								+ " got pong, sending the previous timed-out one instead");
+						final var firstPongBuffer = ByteBuffer.wrap(savedPongData);
+						super.onMessage(() -> firstPongBuffer);
+						savedPongData = null;
 					}
 				}
 			};
 
 			player.sendPing();
-			assertTrue("player should be awaiting for pong",
-					player.awaitingPong);
+			assertEquals("player should be awaiting for pong",
+					player.pingSequence, 1 + player.lastPongReceived);
 			assertEquals("failure count should still be 0",
 					0, player.failureCount);
 
+			try {
+				Thread.sleep(1L);  // make sure the first pong is timed-out
+			} catch (InterruptedException ignored) {}
 			player.sendPing();
-			assertTrue("player should be still awaiting for pong",
-					player.awaitingPong);
+			assertEquals("player should be still awaiting for pong",
+					player.pingSequence, 2 + player.lastPongReceived);
 			assertEquals("failure count should be increased",
 					1, player.failureCount);
 			postPingVerificationsDone.countDown();
@@ -365,8 +368,45 @@ public abstract class WebsocketPingerServiceTests {
 			}
 			assertEquals("failure count should remain unchanged",
 					1, player.failureCount);
+			assertEquals("player should be still awaiting for pong",
+					player.pingSequence, 1 + player.lastPongReceived);
 
 			player.sendPing();  // exceed failure limit
+			assertEquals("failure count should be increased",
+					2, player.failureCount);
+		});
+	}
+
+
+
+	@Test
+	public void testNonconsecutivePong() throws Exception {
+		final var PATH = "/testNonconsecutivePong";
+		performTest(PATH, false, CloseCodes.PROTOCOL_ERROR, (serverEndpoint, clientEndpoint) -> {
+			final var player = new PingPongPlayer(
+				serverEndpoint.connection,
+				Long.MAX_VALUE,
+				-1,
+				false,
+				null,
+				DEFAULT_HASH_FUNCTION
+			) {
+				int pongCounter = 0;
+
+				@Override public void onMessage(PongMessage pong) {
+					pongCounter++;
+					if (pongCounter != 2) {
+						log.fine("server " + PATH + " got pong-" + pongCounter + ", forwarding");
+						super.onMessage(pong);
+					} else {
+						log.fine("server " + PATH + " got pong-" + pongCounter + ", SKIPPING");
+					}
+				}
+			};
+
+			player.sendPing();
+			player.sendPing();
+			player.sendPing();
 		});
 	}
 
@@ -485,7 +525,7 @@ public abstract class WebsocketPingerServiceTests {
 			player.sendPing();
 			try {
 				assertTrue("player should be awaiting for pong",
-						player.awaitingPong);
+						player.pingSequence > player.lastPongReceived);
 			} finally {
 				postPingVerificationsDone.countDown();
 			}
@@ -497,8 +537,8 @@ public abstract class WebsocketPingerServiceTests {
 			}
 			assertEquals("failure count should be reset",
 					0, player.failureCount);
-			assertFalse("player should not be awaiting for pong anymore",
-					player.awaitingPong);
+			assertEquals("player should not be awaiting for pong anymore",
+					player.pingSequence, player.lastPongReceived);
 		});
 	}
 
