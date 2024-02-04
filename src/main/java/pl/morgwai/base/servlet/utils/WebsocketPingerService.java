@@ -15,8 +15,7 @@ import javax.websocket.*;
 import javax.websocket.CloseReason.CloseCodes;
 import javax.websocket.RemoteEndpoint.Async;
 
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
-import static java.util.concurrent.TimeUnit.SECONDS;
+import static java.util.concurrent.TimeUnit.*;
 
 
 
@@ -53,18 +52,19 @@ public class WebsocketPingerService {
 
 	/** 55s as majority of proxies and NAT routers have a timeout of at least 60s. */
 	public static final int DEFAULT_INTERVAL_SECONDS = 55;
+	final long intervalNanos;
 
 	/** Default {@link MessageDigest} for ping content hashing. */
 	public static final String DEFAULT_HASH_FUNCTION = "SHA3-256";
 	final String hashFunction;
 
-	final long timeoutNanos;
 	final int failureLimit;  // negative value means keep-alive-only mode
 	final boolean synchronizeSending;
 
 	final ScheduledExecutorService scheduler;
-	/** Periodic on {@link #scheduler}, executes {@link #pingAllConnections()}. */
-	final ScheduledFuture<?> pingingTask;
+	/** Periodic on {@link #scheduler}, executes {@link PingPongPlayer#sendPing()}. */
+	final ConcurrentMap<Session, ScheduledFuture<?>> connectionPingingTasks =
+			new ConcurrentHashMap<>();
 	final ConcurrentMap<Session, PingPongPlayer> connectionPingPongPlayers =
 			new ConcurrentHashMap<>();
 
@@ -106,7 +106,7 @@ public class WebsocketPingerService {
 		ScheduledExecutorService scheduler,
 		boolean synchronizeSending
 	) {
-		this.timeoutNanos = unit.toNanos(interval);
+		this.intervalNanos = unit.toNanos(interval);
 		this.failureLimit = failureLimit;
 		this.synchronizeSending = synchronizeSending;
 		this.hashFunction = hashFunction;
@@ -120,7 +120,6 @@ public class WebsocketPingerService {
 		if (testInstance.getDigestLength() > 125 - (2 * Long.BYTES)) {
 			throw new IllegalArgumentException(hashFunction + " produces too long hashes");
 		}
-		pingingTask = scheduler.scheduleAtFixedRate(this::pingAllConnections, 0L, interval, unit);
 	}
 
 	/**
@@ -227,16 +226,18 @@ public class WebsocketPingerService {
 	 * arrival of a pong, the corresponding RTT report will be inaccurate.</p>
 	 */
 	public void addConnection(Session connection, BiConsumer<Session, Long> rttObserver) {
-		connectionPingPongPlayers.put(
+		final var pingPongPlayer = new PingPongPlayer(
 			connection,
-			new PingPongPlayer(
-				connection,
-				timeoutNanos,
-				failureLimit,
-				synchronizeSending,
-				rttObserver,
-				hashFunction
-			)
+			intervalNanos,
+			failureLimit,
+			synchronizeSending,
+			rttObserver,
+			hashFunction
+		);
+		connectionPingPongPlayers.put(connection, pingPongPlayer);
+		connectionPingingTasks.put(
+			connection,
+			scheduler.scheduleAtFixedRate(pingPongPlayer::sendPing, 0L, intervalNanos, NANOSECONDS)
 		);
 	}
 
@@ -258,7 +259,14 @@ public class WebsocketPingerService {
 	 *     had not been added and no action has taken place.
 	 */
 	public boolean removeConnection(Session connection) {
-		return connectionPingPongPlayers.remove(connection) != null;
+		final var pingingTask = connectionPingingTasks.remove(connection);
+		if (pingingTask != null) {
+			pingingTask.cancel(false);
+			connectionPingPongPlayers.remove(connection);
+			return true;
+		} else {
+			return false;
+		}
 	}
 
 
@@ -283,7 +291,6 @@ public class WebsocketPingerService {
 	 * @return {@link Session connections} that were registered at the time this method was called.
 	 */
 	public Set<Session> stop(long timeout, TimeUnit unit) {
-		pingingTask.cancel(true);
 		scheduler.shutdown();
 		for (var pingPongPlayer: connectionPingPongPlayers.values()) pingPongPlayer.deregister();
 		try {
@@ -301,17 +308,6 @@ public class WebsocketPingerService {
 	/** Calls {@link #stop(long, TimeUnit)} with a 500ms timeout. */
 	public Set<Session> stop() {
 		return stop(500L, MILLISECONDS);
-	}
-
-
-
-	/** Executed periodically in {@link #scheduler}'s {@link #pingingTask} */
-	void pingAllConnections() {
-		if (connectionPingPongPlayers.isEmpty()) return;
-		for (var pingPongPlayer: connectionPingPongPlayers.values()) {
-			if (Thread.interrupted()) break;
-			pingPongPlayer.sendPing();
-		}
 	}
 
 

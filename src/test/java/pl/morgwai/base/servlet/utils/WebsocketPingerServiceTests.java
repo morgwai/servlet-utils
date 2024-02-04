@@ -423,30 +423,18 @@ public abstract class WebsocketPingerServiceTests {
 			performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
 				assertEquals("there should be no registered connection initially",
 						0, service.getNumberOfConnections());
-
-				service.addConnection(serverEndpoint.connection);
+				final var pongCounter = new AtomicInteger(0);
+				service.addConnection(
+					serverEndpoint.connection,
+					(connection, rttNanos) -> pongCounter.incrementAndGet()
+				);
 				assertTrue("connection should be successfully added",
 						service.containsConnection(serverEndpoint.connection));
 				assertEquals("there should be 1 registered connection after adding",
 						1, service.getNumberOfConnections());
 
-				final var pongCounter = new AtomicInteger(0);
-				final var player = service.connectionPingPongPlayers.get(serverEndpoint.connection);
-				final var decoratedHandler = new MessageHandler.Whole<PongMessage>() {
-					@Override public void onMessage(PongMessage pong) {
-						log.fine("server " + PATH + " got pong");
-						pongCounter.incrementAndGet();
-						player.onMessage(pong);
-					}
-				};
-				serverEndpoint.connection.removeMessageHandler(player);
-
-				serverEndpoint.connection.addMessageHandler(decoratedHandler);
 				try {
-					Thread.sleep(INTERVAL_MILLIS * NUM_EXPECTED_PONGS - 1);
-							// sleep may sleep a bit longer sometimes, so -1 to significantly
-							// decrease the chance of an extra pong while very slightly increasing
-							// the chance of a missed pong
+					Thread.sleep(INTERVAL_MILLIS * (NUM_EXPECTED_PONGS - 1));
 					assertTrue("connection removal should succeed",
 							service.removeConnection(serverEndpoint.connection));
 					Thread.sleep(20L);  // assumed max RTT millis
@@ -671,7 +659,7 @@ public abstract class WebsocketPingerServiceTests {
 				}
 				log.fine("established " + connectionsPerUrl + " connections to " + url);
 			}
-			service.pingingTask.cancel(true);
+			service.scheduler.shutdown();
 			assertEquals("correct number of connections should be registered",
 					totalConnections, service.getNumberOfConnections());
 			log.fine("established all " + totalConnections + " connections");
@@ -681,7 +669,9 @@ public abstract class WebsocketPingerServiceTests {
 
 			pongsReceived[0] = new CountDownLatch(totalConnections);
 			final var startMillis = System.currentTimeMillis();
-			service.pingAllConnections();
+			for (var pingPongPlayer: service.connectionPingPongPlayers.values()) {
+				pingPongPlayer.sendPing();
+			}
 			final var durationMillis = System.currentTimeMillis() - startMillis;
 			log.info("pinging " + totalConnections + " connections took " + durationMillis + "ms");
 			assertTrue(
