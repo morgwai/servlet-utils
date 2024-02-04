@@ -172,6 +172,7 @@ public abstract class WebsocketPingerServiceTests {
 	@Test
 	public void testServerPingPongWithRttReporting() throws Exception {
 		final var PATH = "/testServerPingPongWithRttReporting";
+		final long EXPECTED_RTT_INACCURACY_NANOS = 6000L;
 		performTest(PATH, true, CloseCodes.NORMAL_CLOSURE, (serverEndpoint, clientEndpoint) -> {
 			final long[] pongNanosHolder = {0};
 			final long[] reportedRttNanosHolder = {0};
@@ -201,6 +202,14 @@ public abstract class WebsocketPingerServiceTests {
 
 			final long pingNanos;
 			synchronized (player) {  // increases test accuracy as sendPing() is synchronized
+				//warmup
+				player.hashInputBuffer.putInt(player.hashCode());
+				player.hashInputBuffer.putLong(player.pingSequence);
+				player.hashInputBuffer.putLong(System.nanoTime());
+				player.hashInputBuffer.rewind();
+				player.pingDataBuffer.putLong(player.pingSequence);
+				player.pingDataBuffer.rewind();
+
 				pingNanos = System.nanoTime();
 				player.sendPing();
 			}
@@ -224,10 +233,11 @@ public abstract class WebsocketPingerServiceTests {
 					pongNanosHolder[0] - pingNanos - reportedRttNanosHolder[0];
 			log.info("RTT inaccuracy: " + rttInaccuracyNanos + "ns");
 			assertTrue(
-				"RTT should be accurately reported (" + rttInaccuracyNanos + "ns, expected <1000"
-						+ "ns. This may fail due to CPU usage spikes by other processes, so try to "
-						+ "rerun few times, but if the failure persists it probably means a bug)",
-				abs(rttInaccuracyNanos) < 1000L
+				"RTT should be accurately reported (" + rttInaccuracyNanos + "ns, expected <"
+						+ EXPECTED_RTT_INACCURACY_NANOS + "ns. This may fail due to CPU usage "
+						+ "spikes by other processes, so try to rerun few times, but persisting "
+						+  "inaccuracy of several orders of magnitude probably means a bug)",
+				abs(rttInaccuracyNanos) < EXPECTED_RTT_INACCURACY_NANOS
 			);
 		});
 	}

@@ -370,7 +370,7 @@ public class WebsocketPingerService {
 		 * The exact structure of a ping data:</p>
 		 * <pre>{@code
 		 * pingSequenceBytes + pingTimestampBytes + hashFunction(
-		 *         this.identityHashCodeBytes() + pingSequenceBytes + pingTimestampBytes)}</pre>
+		 *         this.identityHashCodeBytes + pingSequenceBytes + pingTimestampBytes)}</pre>
 		 * <p>
 		 * ({@code +} denotes byte sequence concatenation)</p>
 		 */
@@ -385,12 +385,11 @@ public class WebsocketPingerService {
 			}
 
 			pingSequence++;
-			final var pingTimestampNanos = System.nanoTime();
-			hashInputBuffer.putInt(System.identityHashCode(this));
+			hashInputBuffer.putInt(this.hashCode());  // using default identity hashCode()
 			hashInputBuffer.putLong(pingSequence);
-			hashInputBuffer.putLong(pingTimestampNanos);
-			hashInputBuffer.rewind();
 			pingDataBuffer.putLong(pingSequence);
+			final var pingTimestampNanos = System.nanoTime();
+			hashInputBuffer.putLong(pingTimestampNanos);
 			pingDataBuffer.putLong(pingTimestampNanos);
 			pingDataBuffer.put(hashFunction.digest(hashInputBuffer.array()));
 			pingDataBuffer.rewind();
@@ -402,7 +401,9 @@ public class WebsocketPingerService {
 				} else {
 					connector.sendPing(pingDataBuffer);
 				}
-				pingDataBuffer.rewind();  // prepare for the next ping
+				// prepare for the next ping
+				hashInputBuffer.rewind();
+				pingDataBuffer.rewind();
 			} catch (IOException e) {
 				// on most container implementations the connection is PROBABLY already closed, but
 				// just in case:
