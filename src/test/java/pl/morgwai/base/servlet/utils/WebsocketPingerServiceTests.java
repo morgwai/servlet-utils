@@ -375,34 +375,62 @@ public abstract class WebsocketPingerServiceTests {
 
 
 	@Test
-	public void testNonconsecutivePong() throws Exception {
-		final var PATH = "/testNonconsecutivePong";
-		performTest(PATH, false, PROTOCOL_ERROR, (serverEndpoint, clientEndpoint) -> {
-			final var player = new PingPongPlayer(
-				serverEndpoint.connection,
-				Long.MAX_VALUE,
-				-1,
-				false,
-				null,
-				DEFAULT_HASH_FUNCTION
-			) {
-				int pongCounter = 0;
+	public void testNonconsecutivePongExpectTimelyPongsMode() throws Exception {
+		final var PATH = "/testNonconsecutivePongExpectTimelyPongsMode";
+		performTest(
+			PATH,
+			false,
+			PROTOCOL_ERROR,
+			(serverEndpoint, clientEndpoint) -> testNonconsecutivePong(serverEndpoint, 1, PATH)
+		);
+	}
 
-				@Override public void onMessage(PongMessage pong) {
-					pongCounter++;
-					if (pongCounter != 2) {
-						log.fine("server " + PATH + " got pong-" + pongCounter + ", forwarding");
-						super.onMessage(pong);
-					} else {
-						log.fine("server " + PATH + " got pong-" + pongCounter + ", SKIPPING");
-					}
+	@Test
+	public void testNonconsecutivePongKeepAliveOnlyMode() throws Exception {
+		final var PATH = "/testNonconsecutivePongKeepAliveOnlyMode";
+		performTest(
+			PATH,
+			true,
+			NORMAL_CLOSURE,
+			(serverEndpoint, clientEndpoint) -> testNonconsecutivePong(serverEndpoint, -1, PATH)
+		);
+	}
+
+	public void testNonconsecutivePong(ServerEndpoint serverEndpoint, int failureLimit, String path)
+	{
+		final CountDownLatch[] pongReceived = {
+			new CountDownLatch(1),
+			null,  // the second pong will be skipped
+			new CountDownLatch(1)
+		};
+		final var player = new PingPongPlayer(
+			serverEndpoint.connection,
+			Long.MAX_VALUE,
+			failureLimit,
+			false,
+			null,
+			DEFAULT_HASH_FUNCTION
+		) {
+			int pongCounter = 0;
+
+			@Override public void onMessage(PongMessage pong) {
+				pongCounter++;
+				if (pongCounter == 2) {
+					log.fine("server " + path + " got pong-" + pongCounter + ", SKIPPING");
+					return;
 				}
-			};
 
-			player.sendPing();
-			player.sendPing();
-			player.sendPing();
-		});
+				log.fine("server " + path + " got pong-" + pongCounter + ", forwarding");
+				super.onMessage(pong);
+				pongReceived[pongCounter - 1].countDown();
+			}
+		};
+
+		player.sendPing();
+		await(pongReceived[0], "the 1st pong should be received");
+		player.sendPing();
+		player.sendPing();
+		await(pongReceived[2], "the 3rd pong should be received");
 	}
 
 

@@ -75,7 +75,8 @@ public class WebsocketPingerService {
 	/**
 	 * Constructs a new service in {@code expect-timely-pongs} mode.
 	 * Each timeout adds to a given {@link Session connection}'s failure count, unmatched pongs are
-	 * ignored.
+	 * ignored, matching pongs received in a nonconsecutive order cause the connection to be closed
+	 * immediately with {@link CloseCodes#PROTOCOL_ERROR}.
 	 * @param interval interval between pings and also timeout for pongs. While this class does not
 	 *     enforce any hard limits, as of typical network and CPU capabilities of 2024, values below
 	 *     100ms are probably not a good idea in most cases and anything below 20ms is pure Sparta.
@@ -152,8 +153,7 @@ public class WebsocketPingerService {
 	/**
 	 * Constructs a new service in {@code keep-alive-only} mode.
 	 * The service will not actively close any {@link Session connection} unless an
-	 * {@link IOException} occurs or matching pongs are received in a nonconsecutive order. The
-	 * params have the similar meaning as in {@link
+	 * {@link IOException} occurs. The params have the similar meaning as in {@link
 	 * #WebsocketPingerService(long, TimeUnit, int, String, ScheduledExecutorService, boolean)}.
 	 */
 	public WebsocketPingerService(
@@ -443,7 +443,7 @@ public class WebsocketPingerService {
 					final var pongNumber = pongData.getLong();
 					final var timestampFromPong = pongData.getLong();
 					if (hasValidHash(pongData, pongNumber, timestampFromPong)) {  // matching pong
-						if (pongNumber != lastMatchingPongReceived + 1L) {
+						if (failureLimit >= 0 && pongNumber != lastMatchingPongReceived + 1L) {
 							// As websocket connection is over a reliable transport (TCP or HTTP/3),
 							// nonconsecutive pongs are a symptom of a faulty implementation
 							closeFailedConnection("nonconsecutive pong");
