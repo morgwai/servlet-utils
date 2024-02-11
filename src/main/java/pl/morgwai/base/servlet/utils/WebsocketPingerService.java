@@ -110,15 +110,7 @@ public class WebsocketPingerService {
 		ScheduledExecutorService scheduler,
 		boolean synchronizeSending
 	) {
-		this(
-			interval,
-			unit,
-			failureLimit,
-			hashFunction,
-			scheduler,
-			synchronizeSending,
-			true
-		);
+		this(interval, unit, failureLimit, hashFunction, scheduler, synchronizeSending, true);
 	}
 
 	/**
@@ -128,14 +120,7 @@ public class WebsocketPingerService {
 	 * ({@code expect-timely-pongs} mode).
 	 */
 	public WebsocketPingerService(long interval, TimeUnit unit, int failureLimit) {
-		this(
-			interval,
-			unit,
-			failureLimit,
-			DEFAULT_HASH_FUNCTION,
-			newDefaultScheduler(),
-			false
-		);
+		this(interval, unit, failureLimit, DEFAULT_HASH_FUNCTION, newDefaultScheduler(), false);
 	}
 
 	// design decision note: using interval as a timeout simplifies things A LOT. Using a separate
@@ -437,8 +422,6 @@ public class WebsocketPingerService {
 				closeFailedConnection("failed to send ping");
 			}
 		}
-
-
 
 		private void closeFailedConnection(String reason) {
 			if (log.isLoggable(Level.FINE)) {
