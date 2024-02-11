@@ -99,8 +99,8 @@ public class WebsocketPingerService {
 	 *     When using containers that do require such synchronization, all other message sending by
 	 *     {@code Endpoint}s must also be synchronized on the respective {@link Session connections}
 	 *     (please don't shoot the messenger...).
-	 * @throws IllegalArgumentException if {@code hashFunction} is not supported or produces too
-	 *     long hashes.
+	 * @throws IllegalArgumentException if {@code failureLimit} is negative or if
+	 *     {@code hashFunction} is not supported or produces too long hashes.
 	 */
 	public WebsocketPingerService(
 		long interval,
@@ -110,20 +110,15 @@ public class WebsocketPingerService {
 		ScheduledExecutorService scheduler,
 		boolean synchronizeSending
 	) {
-		this.intervalNanos = unit.toNanos(interval);
-		this.failureLimit = failureLimit;
-		this.synchronizeSending = synchronizeSending;
-		this.hashFunction = hashFunction;
-		this.scheduler = scheduler;
-		final MessageDigest testInstance;
-		try {
-			testInstance = MessageDigest.getInstance(hashFunction);
-		} catch (NoSuchAlgorithmException e) {
-			throw new IllegalArgumentException(e);
-		}
-		if (testInstance.getDigestLength() > MAX_PING_DATA_BYTES - (2 * Long.BYTES)) {
-			throw new IllegalArgumentException(hashFunction + " produces too long hashes");
-		}
+		this(
+			interval,
+			unit,
+			failureLimit,
+			hashFunction,
+			scheduler,
+			synchronizeSending,
+			true
+		);
 	}
 
 	/**
@@ -163,7 +158,7 @@ public class WebsocketPingerService {
 		ScheduledExecutorService scheduler,
 		boolean synchronizeSending
 	) {
-		this(interval, unit, -1, hashFunction, scheduler, synchronizeSending);
+		this(interval, unit, -1, hashFunction, scheduler, synchronizeSending, false);
 	}
 
 	/**
@@ -191,6 +186,36 @@ public class WebsocketPingerService {
 			newDefaultScheduler(),
 			false
 		);
+	}
+
+
+
+	WebsocketPingerService(
+		long interval,
+		TimeUnit unit,
+		int failureLimit,
+		String hashFunction,
+		ScheduledExecutorService scheduler,
+		boolean synchronizeSending,
+		boolean expectTimelyPongsMode
+	) {
+		if (expectTimelyPongsMode && failureLimit < 0) {
+			throw new IllegalArgumentException("failureLimit < 0");
+		}
+		this.intervalNanos = unit.toNanos(interval);
+		this.failureLimit = failureLimit;
+		this.synchronizeSending = synchronizeSending;
+		this.hashFunction = hashFunction;
+		this.scheduler = scheduler;
+		final MessageDigest testInstance;
+		try {
+			testInstance = MessageDigest.getInstance(hashFunction);
+		} catch (NoSuchAlgorithmException e) {
+			throw new IllegalArgumentException(e);
+		}
+		if (testInstance.getDigestLength() > MAX_PING_DATA_BYTES - (2 * Long.BYTES)) {
+			throw new IllegalArgumentException(hashFunction + " produces too long hashes");
+		}
 	}
 
 
