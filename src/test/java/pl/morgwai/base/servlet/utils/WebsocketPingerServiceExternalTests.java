@@ -5,10 +5,10 @@ import java.net.CookieManager;
 import java.util.Map;
 import java.util.logging.ConsoleHandler;
 
-import javax.websocket.WebSocketContainer;
+import jakarta.websocket.WebSocketContainer;
 
-import org.eclipse.jetty.websocket.javax.client.JavaxWebSocketClientContainerProvider;
-import org.eclipse.jetty.websocket.javax.common.JavaxWebSocketContainer;
+import org.eclipse.jetty.websocket.jakarta.client.JakartaWebSocketClientContainerProvider;
+import org.eclipse.jetty.websocket.jakarta.common.JakartaWebSocketContainer;
 import org.junit.*;
 import pl.morgwai.base.jul.JulFormatter;
 
@@ -37,12 +37,12 @@ public class WebsocketPingerServiceExternalTests {
 		wsHttpClient = new org.eclipse.jetty.client.HttpClient();
 		wsHttpClient.setCookieStore(cookieManager.getCookieStore());
 		wsHttpClient.setConnectTimeout(5000L);
-		clientContainer = JavaxWebSocketClientContainerProvider.getContainer(wsHttpClient);
+		clientContainer = JakartaWebSocketClientContainerProvider.getContainer(wsHttpClient);
 	}
 
 	@After
 	public void shutdown() throws Exception {
-		final var jettyWsContainer = ((JavaxWebSocketContainer) clientContainer);
+		final var jettyWsContainer = ((JakartaWebSocketContainer) clientContainer);
 		jettyWsContainer.stop();
 		jettyWsContainer.destroy();
 		wsHttpClient.stop();
