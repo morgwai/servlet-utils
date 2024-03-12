@@ -333,9 +333,13 @@ public class WebsocketPingerService {
 		final long timeoutNanos;
 		final boolean synchronizeSending;
 		final BiConsumer<Session, Long> rttObserver;
-		final MessageDigest hashFunction;
-		final ByteBuffer hashInputBuffer;
 		final ByteBuffer pingDataBuffer;
+
+		// separate instances for better concurrency (MessageDigest is NOT thread-safe)
+		final MessageDigest pingHashFunction;
+		final MessageDigest pongHashFunction;
+		final ByteBuffer pingHashInputBuffer;
+		final ByteBuffer pongHashInputBuffer;
 
 		int failureCount = 0;
 		long pingSequence = 0L;
@@ -359,13 +363,15 @@ public class WebsocketPingerService {
 			this.synchronizeSending = synchronizeSending;
 			this.rttObserver = rttObserver;
 			try {
-				this.hashFunction = MessageDigest.getInstance(hashFunction);
+				pingHashFunction = MessageDigest.getInstance(hashFunction);
+				pongHashFunction = MessageDigest.getInstance(hashFunction);
 			} catch (NoSuchAlgorithmException neverHappens) { // verified by the service constructor
 				throw new RuntimeException(neverHappens);
 			}
-			hashInputBuffer = ByteBuffer.allocate(Long.BYTES * 2 + Integer.BYTES);
+			pingHashInputBuffer = ByteBuffer.allocate(Long.BYTES * 2 + Integer.BYTES);
+			pongHashInputBuffer = ByteBuffer.allocate(Long.BYTES * 2 + Integer.BYTES);
 			pingDataBuffer =
-					ByteBuffer.allocate(Long.BYTES * 2 + this.hashFunction.getDigestLength());
+					ByteBuffer.allocate(Long.BYTES * 2 + pingHashFunction.getDigestLength());
 			connection.addMessageHandler(PongMessage.class, this);
 		}
 
@@ -386,24 +392,26 @@ public class WebsocketPingerService {
 		 * <p>
 		 * ({@code +} denotes a byte sequence concatenation)</p>
 		 */
-		synchronized void sendPing() {
-			if (failureLimit >= 0 && pingSequence > lastMatchingPongReceived) {
-				// expect-timely-pongs mode && the previous ping timed-out
-				failureCount++;
-				if (failureCount > failureLimit) {
-					closeFailedConnection("too many timed-out pongs");
-					return;
+		synchronized void sendPing() {  // sync to ensure 1 concurrent invocation on small intervals
+			synchronized (pongHashFunction) {  // sync with onMessage(pong)
+				if (failureLimit >= 0 && pingSequence > lastMatchingPongReceived) {
+					// expect-timely-pongs mode && the previous ping timed-out
+					failureCount++;
+					if (failureCount > failureLimit) {
+						closeFailedConnection("too many timed-out pongs");
+						return;
+					}
 				}
 			}
 
 			pingSequence++;
-			hashInputBuffer.putInt(this.hashCode());  // using the default identity hashCode()
-			hashInputBuffer.putLong(pingSequence);
+			pingHashInputBuffer.putInt(this.hashCode());  // using the default identity hashCode()
+			pingHashInputBuffer.putLong(pingSequence);
 			pingDataBuffer.putLong(pingSequence);
 			final var pingTimestampNanos = System.nanoTime();
-			hashInputBuffer.putLong(pingTimestampNanos);
+			pingHashInputBuffer.putLong(pingTimestampNanos);
 			pingDataBuffer.putLong(pingTimestampNanos);
-			pingDataBuffer.put(hashFunction.digest(hashInputBuffer.array()));
+			pingDataBuffer.put(pingHashFunction.digest(pingHashInputBuffer.array()));
 			pingDataBuffer.rewind();
 			try {
 				if (synchronizeSending) {
@@ -414,7 +422,7 @@ public class WebsocketPingerService {
 					connector.sendPing(pingDataBuffer);
 				}
 				// prepare for the next ping:
-				hashInputBuffer.rewind();
+				pingHashInputBuffer.rewind();
 				pingDataBuffer.rewind();
 			} catch (IOException e) {
 				// on most container implementations the connection is PROBABLY already closed, but
@@ -444,37 +452,35 @@ public class WebsocketPingerService {
 		@Override
 		public void onMessage(PongMessage pong) {
 			final var pongTimestampNanos = System.nanoTime();
-			Long rttToReport = null;
-			synchronized (this) {
-				try {
-					final var pongData = pong.getApplicationData();
-					final var pongNumber = pongData.getLong();
-					final var timestampFromPong = pongData.getLong();
-					if (hasValidHash(pongData, pongNumber, timestampFromPong)) {  // matching pong
-						if (failureLimit >= 0 && pongNumber != lastMatchingPongReceived + 1L) {
-							// As websocket connection is over a reliable transport (TCP or HTTP/3),
-							// nonconsecutive pongs are a symptom of a faulty implementation
-							closeFailedConnection("nonconsecutive pong");
-							return;
-						}
+			final var pongData = pong.getApplicationData();
+			try {
+				final var pongNumber = pongData.getLong();
+				final var timestampFromPong = pongData.getLong();
+				if (hasValidHash(pongData, pongNumber, timestampFromPong)) {  // matching pong
+					if (failureLimit >= 0 && pongNumber != lastMatchingPongReceived + 1L) {
+						// As websocket connection is over a reliable transport (TCP or HTTP/3),
+						// nonconsecutive pongs are a symptom of a faulty implementation
+						closeFailedConnection("nonconsecutive pong");
+						return;
+					}
 
+					final var rttNanos = pongTimestampNanos - timestampFromPong;
+					synchronized (pongHashFunction) {  // sync with sendPing()
 						lastMatchingPongReceived++;
-						final var rttNanos = pongTimestampNanos - timestampFromPong;
 						if (rttNanos <= timeoutNanos) failureCount = 0;
-						if (rttObserver != null) rttToReport = rttNanos;//report out of synchronized
-					}  // else: unsolicited pong
-				} catch (BufferUnderflowException ignored) {}  // unsolicited pong with small data
-			}
-			if (rttToReport != null) rttObserver.accept(connection, rttToReport);
+					}
+					if (rttObserver != null) rttObserver.accept(connection, rttNanos);
+				}  // else: unsolicited pong
+			} catch (BufferUnderflowException ignored) {}  // unsolicited pong with small data
 		}
 
 		boolean hasValidHash(ByteBuffer bufferToVerify, long pongNumber, long timestampFromPong) {
-			hashInputBuffer.putInt(this.hashCode());
-			hashInputBuffer.putLong(pongNumber);
-			hashInputBuffer.putLong(timestampFromPong);
-			hashInputBuffer.rewind();
+			pongHashInputBuffer.putInt(this.hashCode());
+			pongHashInputBuffer.putLong(pongNumber);
+			pongHashInputBuffer.putLong(timestampFromPong);
+			pongHashInputBuffer.rewind();
 			return bufferToVerify.equals(ByteBuffer.wrap(
-					hashFunction.digest(hashInputBuffer.array())));
+					pongHashFunction.digest(pongHashInputBuffer.array())));
 		}
 
 

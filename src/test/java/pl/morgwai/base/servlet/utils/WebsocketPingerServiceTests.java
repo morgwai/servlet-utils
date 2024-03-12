@@ -210,10 +210,10 @@ public abstract class WebsocketPingerServiceTests {
 			final long pingNanos;
 			synchronized (player) {  // increases test accuracy as sendPing() is synchronized
 				//warmup
-				player.hashInputBuffer.putInt(player.hashCode());
-				player.hashInputBuffer.putLong(player.pingSequence);
-				player.hashInputBuffer.putLong(System.nanoTime());
-				player.hashInputBuffer.rewind();
+				player.pingHashInputBuffer.putInt(player.hashCode());
+				player.pingHashInputBuffer.putLong(player.pingSequence);
+				player.pingHashInputBuffer.putLong(System.nanoTime());
+				player.pingHashInputBuffer.rewind();
 				player.pingDataBuffer.putLong(player.pingSequence);
 				player.pingDataBuffer.rewind();
 
@@ -332,7 +332,8 @@ public abstract class WebsocketPingerServiceTests {
 				@Override public void onMessage(PongMessage pong) {
 					if (savedPongData == null) {
 						log.fine("server " + PATH + " got pong, NOT forwarding, saving for later");
-						savedPongData = new byte[Long.BYTES * 2 + hashFunction.getDigestLength()];
+						savedPongData =
+								new byte[Long.BYTES * 2 + pingHashFunction.getDigestLength()];
 						pong.getApplicationData().get(savedPongData);
 					} else {
 						await(postPingVerificationsDone, "post-ping verifications should complete");
