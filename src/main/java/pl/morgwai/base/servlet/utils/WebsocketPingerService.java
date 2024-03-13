@@ -77,10 +77,16 @@ public class WebsocketPingerService {
 	 * Each timeout adds to a given {@link Session connection}'s failure count, unmatched pongs are
 	 * ignored, matching pongs received in a nonconsecutive order cause the connection to be closed
 	 * immediately with {@link CloseCodes#PROTOCOL_ERROR}.
-	 * @param interval interval between pings and also timeout for pongs. While this class does not
-	 *     enforce any hard limits, as of typical network and CPU capabilities of 2024, values below
-	 *     100ms are probably not a good idea in most cases and anything below 20ms is pure Sparta.
-	 * @param unit unit for {@code interval}.
+	 * @param interval interval between pings and also timeout for pongs. Specifically, the value of
+	 *     this param will be passed as the 3rd param to
+	 *     {@link ScheduledExecutorService#scheduleWithFixedDelay(Runnable, long, long, TimeUnit)
+	 *     scheduler.scheduleWithFixedDelay(pingingTask, 0L, interval, unit)} when scheduling pings.
+	 *     While this class does not enforce any hard limits, as of typical network and CPU
+	 *     capabilities of 2024, values below 100ms are probably not a good idea in most cases and
+	 *     anything below 20ms is pure Sparta.
+	 * @param unit unit for {@code interval} passed as the 4th param to
+	 *     {@link ScheduledExecutorService#scheduleWithFixedDelay(Runnable, long, long, TimeUnit)
+	 *     scheduler.scheduleWithFixedDelay(pingingTask, 0L, interval, unit)} when scheduling pings.
 	 * @param failureLimit limit of timed-out pongs: if exceeded, then the given
 	 *     {@link Session connection} is closed with {@link CloseCodes#PROTOCOL_ERROR}. Each
 	 *     matching, timely pong resets the {@link Session connection}'s failure counter.
@@ -246,7 +252,8 @@ public class WebsocketPingerService {
 		connectionPingPongPlayers.put(connection, pingPongPlayer);
 		connectionPingingTasks.put(
 			connection,
-			scheduler.scheduleAtFixedRate(pingPongPlayer::sendPing, 0L, intervalNanos, NANOSECONDS)
+			scheduler.scheduleWithFixedDelay(
+					pingPongPlayer::sendPing, 0L, intervalNanos, NANOSECONDS)
 		);
 	}
 
@@ -392,8 +399,8 @@ public class WebsocketPingerService {
 		 * <p>
 		 * ({@code +} denotes a byte sequence concatenation)</p>
 		 */
-		synchronized void sendPing() {  // sync to ensure 1 concurrent invocation on small intervals
-			synchronized (pongHashFunction) {  // sync with onMessage(pong)
+		void sendPing() {
+			synchronized (this) {  // sync with onMessage(pong)
 				if (failureLimit >= 0 && pingSequence > lastMatchingPongReceived) {
 					// expect-timely-pongs mode && the previous ping timed-out
 					failureCount++;
@@ -465,7 +472,7 @@ public class WebsocketPingerService {
 					}
 
 					final var rttNanos = pongTimestampNanos - timestampFromPong;
-					synchronized (pongHashFunction) {  // sync with sendPing()
+					synchronized (this) {  // sync with sendPing()
 						lastMatchingPongReceived++;
 						if (rttNanos <= timeoutNanos) failureCount = 0;
 					}
