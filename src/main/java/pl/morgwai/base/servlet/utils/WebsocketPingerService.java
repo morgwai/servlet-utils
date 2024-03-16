@@ -129,6 +129,24 @@ public class WebsocketPingerService {
 		this(interval, unit, failureLimit, DEFAULT_HASH_FUNCTION, newDefaultScheduler(), false);
 	}
 
+	/**
+	 * Calls {@link
+	 * #WebsocketPingerService(long, TimeUnit, int, String, ScheduledExecutorService, boolean)
+	 * WebsocketPingerService}<code>({@link #DEFAULT_INTERVAL_SECONDS}, SECONDS, failureLimit,
+	 * {@value #DEFAULT_HASH_FUNCTION}, {@link #newDefaultScheduler()}, false)</code>
+	 * ({@code expect-timely-pongs} mode).
+	 */
+	public WebsocketPingerService(int failureLimit) {
+		this(
+			DEFAULT_INTERVAL_SECONDS,
+			SECONDS,
+			failureLimit,
+			DEFAULT_HASH_FUNCTION,
+			newDefaultScheduler(),
+			false
+		);
+	}
+
 	// design decision note: using interval as a timeout simplifies things A LOT. Using a separate
 	// SHORTER duration for a timeout is still pretty feasible and may be implemented if there's
 	// enough need for it. Allowing a timeouts longer than intervals OTOH would require scheduling
