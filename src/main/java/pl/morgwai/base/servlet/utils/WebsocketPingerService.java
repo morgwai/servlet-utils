@@ -44,16 +44,13 @@ public class WebsocketPingerService {
 
 
 
-	// design decision note: while it is possible to use unsolicited pongs for keep-alive-only,
-	// some ping-pong implementations confuse them with malformed pongs and close connections.
-	// Furthermore, using ping-pong allows to provide RTT reports in keep-alive-only mode also.
-
-
-
 	/** The maximum length of ping data in bytes as per websocket spec. */
 	public static final int MAX_PING_DATA_BYTES = 125;
 
-	/** 55s as majority of proxies and NAT routers have a timeout of at least 60s. */
+	/**
+	 * {@value #DEFAULT_INTERVAL_SECONDS}s as majority of proxies and NAT routers have a timeout of
+	 * at least 60s.
+	 */
 	public static final int DEFAULT_INTERVAL_SECONDS = 55;
 	final long intervalNanos;
 
@@ -149,15 +146,16 @@ public class WebsocketPingerService {
 
 	// design decision note: using interval as a timeout simplifies things A LOT. Using a separate
 	// SHORTER duration for a timeout is still pretty feasible and may be implemented if there's
-	// enough need for it. Allowing a timeouts longer than intervals OTOH would require scheduling
-	// of on-timeout actions and is almost certainly not worth the effort.
+	// enough need for it. Allowing timeouts longer than intervals OTOH would require scheduling
+	// (and then cancelling) of on-timeout actions and is almost certainly not worth the effort.
 
 
 
 	/**
 	 * Constructs a new service in {@code keep-alive-only} mode.
 	 * The service will not actively close any {@link Session connection} unless an
-	 * {@link IOException} occurs. The params have the similar meaning as in {@link
+	 * {@link IOException} occurs, which on most container implementations cause the connection to
+	 * be closed automatically anyway. The params have the similar meaning as in {@link
 	 * #WebsocketPingerService(long, TimeUnit, int, String, ScheduledExecutorService, boolean)}.
 	 */
 	public WebsocketPingerService(
@@ -197,8 +195,13 @@ public class WebsocketPingerService {
 		);
 	}
 
+	// design decision note: while it is possible to use unsolicited pongs for keep-alive-only,
+	// some ping-pong implementations confuse them with malformed pongs and close connections.
+	// Furthermore, using ping-pong allows to provide RTT reports in keep-alive-only mode also.
 
 
+
+	/** Low-level constructor that performs the actual initialization. */
 	WebsocketPingerService(
 		long interval,
 		TimeUnit unit,
@@ -329,7 +332,7 @@ public class WebsocketPingerService {
 			scheduler.awaitTermination(timeout, unit);
 		} catch (InterruptedException ignored) {}
 		if ( !scheduler.isTerminated()) {  // this probably never happens
-			log.warning("pinging scheduler failed to terminate");
+			log.warning("pinging scheduler failed to terminate cleanly, calling shutdownNow()...");
 			scheduler.shutdownNow();  // probably won't help, but as a last ditch effort...
 		}
 		final var remaining = Set.copyOf(connectionPingPongPlayers.keySet());
