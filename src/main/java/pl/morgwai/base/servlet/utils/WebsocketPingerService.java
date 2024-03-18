@@ -44,9 +44,6 @@ public class WebsocketPingerService {
 
 
 
-	/** The maximum length of ping data in bytes as per websocket spec. */
-	public static final int MAX_PING_DATA_BYTES = 125;
-
 	/**
 	 * {@value #DEFAULT_INTERVAL_SECONDS}s as majority of proxies and NAT routers have a timeout of
 	 * at least 60s.
@@ -54,6 +51,14 @@ public class WebsocketPingerService {
 	public static final int DEFAULT_INTERVAL_SECONDS = 55;
 	final long intervalNanos;
 
+	/** The maximum length of ping data in bytes as per websocket spec. */
+	public static final int MAX_PING_DATA_BYTES = 125;
+	/**
+	 * The maximum length of hashes that {@link MessageDigest hashFunction} passed to {@link
+	 * #WebsocketPingerService(long, TimeUnit, int, String, ScheduledExecutorService, boolean) the
+	 * constructor} must not exceed.
+	 */
+	public static final int MAX_HASH_LENGTH_BYTES = MAX_PING_DATA_BYTES - (2 * Long.BYTES);
 	/** Default {@link MessageDigest} for hashing ping content. */
 	public static final String DEFAULT_HASH_FUNCTION = "SHA3-256";
 	final String hashFunction;
@@ -90,8 +95,8 @@ public class WebsocketPingerService {
 	 * @param hashFunction name of a {@link MessageDigest} to use for ping content hashing. This
 	 *     must be supported by a registered {@link java.security.Provider security Provider} and
 	 *     {@link MessageDigest#getDigestLength() the length of produced hashes} must not exceed
-	 *     <code>({@value #MAX_PING_DATA_BYTES}-(2*{@value Long#BYTES}))</code> bytes, otherwise
-	 *     an {@link IllegalArgumentException} will be thrown.
+	 *     {@value #MAX_HASH_LENGTH_BYTES} bytes, otherwise an {@link IllegalArgumentException}
+	 *     will be thrown.
 	 * @param scheduler used for scheduling pings. Upon a call to {@link #stop(long, TimeUnit)},
 	 *     {@code scheduler} will be {@link ScheduledExecutorService#shutdown() shutdown}.
 	 * @param synchronizeSending whether to synchronize ping sending on a given
@@ -214,20 +219,18 @@ public class WebsocketPingerService {
 		if (expectTimelyPongsMode && failureLimit < 0) {
 			throw new IllegalArgumentException("failureLimit < 0");
 		}
+		try {
+			if (MessageDigest.getInstance(hashFunction).getDigestLength() > MAX_HASH_LENGTH_BYTES) {
+				throw new IllegalArgumentException(hashFunction + " produces too long hashes");
+			}
+		} catch (NoSuchAlgorithmException e) {
+			throw new IllegalArgumentException(e);
+		}
 		this.intervalNanos = unit.toNanos(interval);
 		this.failureLimit = failureLimit;
 		this.synchronizeSending = synchronizeSending;
 		this.hashFunction = hashFunction;
 		this.scheduler = scheduler;
-		final MessageDigest testInstance;
-		try {
-			testInstance = MessageDigest.getInstance(hashFunction);
-		} catch (NoSuchAlgorithmException e) {
-			throw new IllegalArgumentException(e);
-		}
-		if (testInstance.getDigestLength() > MAX_PING_DATA_BYTES - (2 * Long.BYTES)) {
-			throw new IllegalArgumentException(hashFunction + " produces too long hashes");
-		}
 	}
 
 
