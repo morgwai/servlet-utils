@@ -54,11 +54,13 @@ public class WebsocketPingerService {
 	/** The maximum length of ping data in bytes as per websocket spec. */
 	public static final int MAX_PING_DATA_BYTES = 125;
 	/**
-	 * The maximum length of hashes that {@link MessageDigest hashFunction} passed to {@link
-	 * #WebsocketPingerService(long, TimeUnit, int, String, ScheduledExecutorService, boolean) the
-	 * constructor} must not exceed.
+	 * The maximum allowed length of hashes produced by {@link MessageDigest hashFunction} passed to
+	 * {@link
+	 * #WebsocketPingerService(long, TimeUnit, int, String, ScheduledExecutorService, boolean)
+	 * the constructor}.
 	 */
 	public static final int MAX_HASH_LENGTH_BYTES = MAX_PING_DATA_BYTES - (2 * Long.BYTES);
+
 	/** Default {@link MessageDigest} for hashing ping content. */
 	public static final String DEFAULT_HASH_FUNCTION = "SHA3-256";
 	final String hashFunction;
@@ -66,11 +68,6 @@ public class WebsocketPingerService {
 	final int failureLimit;  // negative value means keep-alive-only mode
 	final boolean synchronizeSending;
 	final ScheduledExecutorService scheduler;
-	/** Periodic on {@link #scheduler}, executes {@link PingPongPlayer#sendPing()}. */
-	final ConcurrentMap<Session, ScheduledFuture<?>> connectionPingingTasks =
-			new ConcurrentHashMap<>();
-	final ConcurrentMap<Session, PingPongPlayer> connectionPingPongPlayers =
-			new ConcurrentHashMap<>();
 
 
 
@@ -235,6 +232,14 @@ public class WebsocketPingerService {
 
 
 
+	final ConcurrentMap<Session, PingPongPlayer> connectionPingPongPlayers =
+			new ConcurrentHashMap<>();
+	/** Tasks periodic on {@link #scheduler}, that execute {@link PingPongPlayer#sendPing()}. */
+	final ConcurrentMap<Session, ScheduledFuture<?>> connectionPingingTasks =
+			new ConcurrentHashMap<>();
+
+
+
 	/**
 	 * Registers {@code connection} for pinging.
 	 * Usually called in
@@ -285,7 +290,7 @@ public class WebsocketPingerService {
 	// developers if a receiver of RTT reports is the Endpoint instance associated with the
 	// connection which reports concern. Container Threads calling Endpoints are bound by a
 	// concurrency contract requiring that each Endpoint instance is called by at most 1 Thread at a
-	// time. Therefore it would create a lot of problems for developers if delivering  of RTT
+	// time. Therefore it would create a lot of problems for developers if delivering of RTT
 	// reports didn't adhere to this contract either.
 
 
@@ -458,7 +463,7 @@ public class WebsocketPingerService {
 			} catch (IOException e) {
 				// on most container implementations the connection is PROBABLY already closed, but
 				// just in case:
-				closeFailedConnection("failed to send ping");
+				closeFailedConnection("failed to send a ping");
 			}
 		}
 
@@ -502,7 +507,7 @@ public class WebsocketPingerService {
 					}
 					if (rttObserver != null) rttObserver.accept(connection, rttNanos);
 				}  // else: unsolicited pong
-			} catch (BufferUnderflowException ignored) {}  // unsolicited pong with small data
+			} catch (BufferUnderflowException ignored) {}  // unsolicited pong with a small data
 		}
 
 		boolean hasValidHash(ByteBuffer bufferToVerify, long pongNumber, long timestampFromPong) {
