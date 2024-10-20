@@ -3,11 +3,11 @@
 Some helpful classes when developing `Servlet`s and websocket `Endpoint`s.<br/>
 Copyright 2021 Piotr Morgwai Kotarbinski, Licensed under the Apache License, Version 2.0.<br/>
 <br/>
-**latest release: 5.1**<br/>
-[javax flavor](https://search.maven.org/artifact/pl.morgwai.base/servlet-utils/5.1-javax/jar)
-([javadoc](https://javadoc.io/doc/pl.morgwai.base/servlet-utils/5.1-javax)) - supports Websocket `1.1` API<br/>
-[jakarta flavor](https://search.maven.org/artifact/pl.morgwai.base/servlet-utils/5.1-jakarta/jar)
-([javadoc](https://javadoc.io/doc/pl.morgwai.base/servlet-utils/5.1-jakarta)) - supports Websocket `2.0.0` to at least `2.1.1` APIs
+**latest release: 6.0**<br/>
+[javax flavor](https://search.maven.org/artifact/pl.morgwai.base/servlet-utils/6.0-javax/jar)
+([javadoc](https://javadoc.io/doc/pl.morgwai.base/servlet-utils/6.0-javax)) - supports Websocket `1.1` API<br/>
+[jakarta flavor](https://search.maven.org/artifact/pl.morgwai.base/servlet-utils/6.0-jakarta/jar)
+([javadoc](https://javadoc.io/doc/pl.morgwai.base/servlet-utils/6.0-jakarta)) - supports Websocket `2.0.0` to at least `2.1.1` APIs
 
 
 ## MAIN USER CLASSES
