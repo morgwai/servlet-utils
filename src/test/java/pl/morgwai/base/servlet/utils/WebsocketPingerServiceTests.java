@@ -475,7 +475,8 @@ public abstract class WebsocketPingerServiceTests {
 						NUM_EXPECTED_PONGS, pongCounter.get());
 			});
 		} finally {
-			serviceEmpty = service.stop().isEmpty();
+			serviceEmpty = service.shutdown().isEmpty();
+			service.tryEnforceTermination();
 		}
 		// verify after finally block to not suppress earlier errors
 		assertTrue("there should be no remaining connections in the service",
@@ -485,7 +486,7 @@ public abstract class WebsocketPingerServiceTests {
 
 
 	@Test
-	public void testRemoveUnregisteredConnection() {
+	public void testRemoveUnregisteredConnection() throws InterruptedException {
 		final var service = new WebsocketPingerService();
 		final var connectionMock = (Session) Proxy.newProxyInstance(  // poor man's mock
 			getClass().getClassLoader(),
@@ -502,7 +503,7 @@ public abstract class WebsocketPingerServiceTests {
 			assertFalse("removing unregistered connection should indicate no action took place",
 					service.removeConnection(connectionMock));
 		} finally {
-			service.stop();
+			service.tryEnforceTermination();
 		}
 	}
 
@@ -703,7 +704,7 @@ public abstract class WebsocketPingerServiceTests {
 					+ NANOSECONDS.toMillis(maxRtt.get()) + "ms");
 		} finally {
 			log.fine("closing " + service.getNumberOfConnections() + " connections");
-			for (var connection: service.stop()) {
+			for (var connection: service.shutdown()) {
 				try {
 					connection.close();
 				} catch (Exception ignored) {}

@@ -30,9 +30,13 @@ import static java.util.concurrent.TimeUnit.*;
  * Instances are usually created at app startups and stored in locations easily reachable for
  * {@code Endpoint} instances or a code that manages them (for example as a
  * {@code ServletContext} attribute, a field in a class that creates client
- * {@link Session connections} or on some static var).<br/>
- * At app shutdowns, {@link #stop()} should be called to terminate the pinging
- * {@link ScheduledExecutorService scheduler}.</p>
+ * {@link Session connections} or on some static var).</p>
+ * <p>
+ * At app shutdowns, {@link #shutdown()} should be called to terminate the pinging
+ * {@link ScheduledExecutorService scheduler}, followed by {@link #awaitTermination(long, TimeUnit)}
+ * and if it fails then also {@link #shutdownNow()} similarly as with {@link ExecutorService}s.
+ * For convenience {@link #tryEnforceTermination()} method was provided that combines the previous
+ * 3.</p>
  * <p>
  * Connections can be registered for pinging using {@link #addConnection(Session)}
  * and deregister using {@link #removeConnection(Session)}.</p>
@@ -94,8 +98,9 @@ public class WebsocketPingerService {
 	 *     {@link MessageDigest#getDigestLength() the length of produced hashes} must not exceed
 	 *     {@value #MAX_HASH_LENGTH_BYTES} bytes, otherwise an {@link IllegalArgumentException}
 	 *     will be thrown.
-	 * @param scheduler used for scheduling pings. Upon a call to {@link #stop(long, TimeUnit)},
-	 *     {@code scheduler} will be {@link ScheduledExecutorService#shutdown() shutdown}.
+	 * @param scheduler used for scheduling pings. Generally the {@code Service} takes the ownership
+	 *     of the {@code scheduler}: see {@link #shutdown()}, {@link #shutdownNow()},
+	 *     {@link #awaitTermination(long, TimeUnit)} and {@link #tryEnforceTermination()}.
 	 * @param synchronizeSending whether to synchronize ping sending on a given
 	 *     {@link Session connection}. Whether it is necessary depends on the container
 	 *     implementation being used. For example it is not necessary on Jetty, but it is on Tomcat:
@@ -328,35 +333,64 @@ public class WebsocketPingerService {
 
 
 	/**
-	 * Stops the service and {@link ScheduledExecutorService#shutdown() shutdowns} its scheduler.
-	 * After a call to this method the service becomes no longer usable and should be discarded.
+	 * Shutdowns the service and {@link ScheduledExecutorService#shutdown() its scheduler}.
+	 * After a call to this method the service becomes no longer usable and should be discarded: the
+	 * only methods that may be called are {@code #shutdown()} (idempotent),
+	 * {@link #awaitTermination(long, TimeUnit)}, {@link #tryEnforceTermination(long, TimeUnit)} and
+	 * {@link #shutdownNow()}.
 	 * @return {@link Session connections} that were still registered at the time this method was
 	 * called.
 	 */
-	public Set<Session> stop(long timeout, TimeUnit unit) {
+	public Set<Session> shutdown() {
 		scheduler.shutdown();
 		for (var pingPongPlayer: connectionPingPongPlayers.values()) pingPongPlayer.deregister();
-		try {
-			scheduler.awaitTermination(timeout, unit);
-		} catch (InterruptedException ignored) {}
-		if ( !scheduler.isTerminated()) {  // this probably never happens
-			log.warning("pinging scheduler failed to terminate cleanly, calling shutdownNow()...");
-			scheduler.shutdownNow();  // probably won't help, but as a last ditch effort...
-		}
 		final var remaining = Set.copyOf(connectionPingPongPlayers.keySet());
 		connectionPingPongPlayers.clear();
 		return remaining;
 	}
 
 	/**
-	 * Calls {@link #stop(long, TimeUnit) stop}<code>({@value #DEFAULT_STOP_TIMEOUT_MILLIS},
-	 * MILLISECONDS)</code>.
+	 * Calls {@link ScheduledExecutorService#awaitTermination(long, TimeUnit)
+	 * scheduler.awaitTermination(...)}.
 	 */
-	public Set<Session> stop() {
-		return stop(DEFAULT_STOP_TIMEOUT_MILLIS, MILLISECONDS);
+	public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
+		return scheduler.awaitTermination(timeout, unit);
 	}
 
-	static final long DEFAULT_STOP_TIMEOUT_MILLIS = 500L;
+	/** Calls {@link ScheduledExecutorService#shutdownNow() scheduler.shutdownNow()}. */
+	public void shutdownNow() {
+		scheduler.shutdownNow();
+	}
+
+	/** Calls {@link ScheduledExecutorService#isTerminated() scheduler.isTerminated()}. */
+	public boolean isTerminated() {
+		return scheduler.isTerminated();
+	}
+
+	/**
+	 * Calls {@link #shutdown()} and returns the result of
+	 * {@link #awaitTermination(long, TimeUnit) awaitTermination(timeout, unit)}, if the scheduler
+	 * {@link ScheduledExecutorService#isTerminated() fails to terminate}, {@link #shutdownNow()} is
+	 * called {@code finally}.
+	 */
+	public boolean tryEnforceTermination(long timeout, TimeUnit unit) throws InterruptedException {
+		shutdown();
+		try {
+			return scheduler.awaitTermination(timeout, unit);
+		} finally {
+			if ( !scheduler.isTerminated()) scheduler.shutdownNow();
+		}
+	}
+
+	/**
+	 * Calls {@link #tryEnforceTermination(long, TimeUnit) tryEnforceTermination(}{@value
+	 * #TERMINATION_TIMEOUT_MILLIS}, {@code MILLISECONDS)}.
+	 */
+	public boolean tryEnforceTermination() throws InterruptedException {
+		return tryEnforceTermination(TERMINATION_TIMEOUT_MILLIS, MILLISECONDS);
+	}
+
+	static final long TERMINATION_TIMEOUT_MILLIS = 500L;
 
 
 
@@ -524,7 +558,7 @@ public class WebsocketPingerService {
 		/**
 		 * Removes itself from {@link #connection}'s message handlers.
 		 * Called by the enclosing service for {@link Session connections} that still remain open
-		 * after {@link #stop()}.
+		 * after {@link #shutdown()}.
 		 */
 		void deregister() {
 			try {
