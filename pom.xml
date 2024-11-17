@@ -6,7 +6,7 @@
 
 	<groupId>pl.morgwai.base</groupId>
 	<artifactId>servlet-utils</artifactId>
-	<version>6.0-javax</version><!--jakarta-->
+	<version>6.0-jakarta</version>
 
 	<name>Servlet utils</name>
 	<description>Some helpful classes when developing servlets</description>
@@ -57,7 +57,7 @@
 		<profile>
 			<id>javax</id>
 			<activation>
-				<activeByDefault>true</activeByDefault><!--jakarta:<activeByDefault>false</activeByDefault>-->
+				<activeByDefault>false</activeByDefault>
 			</activation>
 			<dependencies>
 				<dependency>
@@ -95,7 +95,7 @@
 		<profile>
 			<id>jakarta</id>
 			<activation>
-				<activeByDefault>false</activeByDefault><!--jakarta:<activeByDefault>true</activeByDefault>-->
+				<activeByDefault>true</activeByDefault>
 			</activation>
 			<dependencies>
 				<dependency>
