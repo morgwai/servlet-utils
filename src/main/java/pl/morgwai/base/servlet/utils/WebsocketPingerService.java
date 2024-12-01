@@ -462,7 +462,7 @@ public class WebsocketPingerService {
 		 * <p>
 		 * ({@code +} denotes a byte sequence concatenation)</p>
 		 */
-		void sendPing() {
+		final void sendPing() {
 			synchronized (this) {  // sync with onMessage(pong)
 				if (failureLimit >= 0 && pingSequence > lastMatchingPongReceived) {
 					// expect-timely-pongs mode && the previous ping timed-out
@@ -544,7 +544,11 @@ public class WebsocketPingerService {
 			} catch (BufferUnderflowException ignored) {}  // unsolicited pong with a small data
 		}
 
-		boolean hasValidHash(ByteBuffer bufferToVerify, long pongNumber, long timestampFromPong) {
+		private boolean hasValidHash(
+			ByteBuffer bufferToVerify,
+			long pongNumber,
+			long timestampFromPong
+		) {
 			pongHashInputBuffer.putInt(this.hashCode());
 			pongHashInputBuffer.putLong(pongNumber);
 			pongHashInputBuffer.putLong(timestampFromPong);
