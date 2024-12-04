@@ -25,7 +25,7 @@ import static java.util.concurrent.TimeUnit.*;
  * {@link #WebsocketPingerService(long, TimeUnit, int, String, ScheduledExecutorService, boolean)
  * expect-timely-pongs mode} or
  * {@link #WebsocketPingerService(long, TimeUnit, String, ScheduledExecutorService, boolean)
- * keep-alive-only mode}. The service can be used both on the client and the server side.
+ * keep-alive-only mode}. The {@code Service} can be used both on the client and the server side.
  * <p>
  * Instances are usually created at app startups and stored in locations easily reachable for
  * {@code Endpoint} instances or a code that manages them (for example as a
@@ -76,7 +76,7 @@ public class WebsocketPingerService {
 
 
 	/**
-	 * Constructs a new service in {@code expect-timely-pongs} mode.
+	 * Constructs a new {@code Service} in {@code expect-timely-pongs} mode.
 	 * Each timeout adds to a given {@link Session connection}'s failure count, unmatched pongs are
 	 * ignored, matching pongs received in a nonconsecutive order cause the connection to be closed
 	 * immediately with {@link CloseCodes#PROTOCOL_ERROR}.
@@ -159,8 +159,8 @@ public class WebsocketPingerService {
 
 
 	/**
-	 * Constructs a new service in {@code keep-alive-only} mode.
-	 * The service will not actively close any {@link Session connection} unless an
+	 * Constructs a new {@code Service} in {@code keep-alive-only} mode.
+	 * The {@code Service} will not actively close any {@link Session connection} unless an
 	 * {@link IOException} occurs, which on most container implementations cause the connection to
 	 * be closed automatically anyway. The params have the similar meaning as in {@link
 	 * #WebsocketPingerService(long, TimeUnit, int, String, ScheduledExecutorService, boolean)}.
@@ -301,12 +301,12 @@ public class WebsocketPingerService {
 
 
 	/**
-	 * Deregisters {@code connection} from this service, so it will not be pinged anymore.
+	 * Deregisters {@code connection} from this {@code Service}, so it will not be pinged anymore.
 	 * Usually called in
 	 * {@link javax.websocket.Endpoint#onClose(Session, CloseReason) onClose(...)}.
 	 * @return {@code true} if {@code connection} had been {@link #addConnection(Session) added} to
-	 *     this service before and has been successfully removed by this method, {@code false} if it
-	 *     had not been added and no action has taken place.
+	 *     this {@code Service} before and has been successfully removed by this method,
+	 *     {@code false} if it had not been added and no action has taken place.
 	 */
 	public boolean removeConnection(Session connection) {
 		final var pingingTask = connectionPingingTasks.remove(connection);
@@ -318,7 +318,10 @@ public class WebsocketPingerService {
 
 
 
-	/** Whether {@code connection} is {@link #addConnection(Session) registered} in this service. */
+	/**
+	 * Whether {@code connection} is {@link #addConnection(Session) registered} in this
+	 * {@code Service}.
+	 */
 	public boolean containsConnection(Session connection) {
 		return connectionPingPongPlayers.containsKey(connection);
 	}
@@ -333,9 +336,9 @@ public class WebsocketPingerService {
 
 
 	/**
-	 * Shutdowns the service and {@link ScheduledExecutorService#shutdown() its scheduler}.
-	 * After a call to this method the service becomes no longer usable and should be discarded: the
-	 * only methods that may be called are {@code #shutdown()} (idempotent),
+	 * Shutdowns this {@code Service} and {@link ScheduledExecutorService#shutdown() its scheduler}.
+	 * After a call to this method this instance becomes no longer usable and should be discarded:
+	 * the only methods that may be called are {@code #shutdown()} (idempotent),
 	 * {@link #awaitTermination(long, TimeUnit)}, {@link #tryEnforceTermination(long, TimeUnit)} and
 	 * {@link #shutdownNow()}.
 	 * @return {@link Session connections} that were still registered at the time this method was
@@ -395,7 +398,16 @@ public class WebsocketPingerService {
 
 
 
-	/** Plays ping-pong with a single associated {@link Session connection}. */
+	/**
+	 * Plays ping-pong with a single associated {@link Session connection}.
+	 * <p>
+	 * Ping data structure:</p>
+	 * <pre>{@code
+	 * pingNumberBytes + pingTimestampBytes + hashFunction(
+	 *         this.identityHashCodeBytes + pingNumberBytes + pingTimestampBytes)}</pre>
+	 * <p>
+	 * ({@code +} denotes a byte sequence concatenation)</p>
+	 */
 	static class PingPongPlayer implements MessageHandler.Whole<PongMessage> {
 
 		final Session connection;
@@ -409,12 +421,9 @@ public class WebsocketPingerService {
 		// separate instances for better concurrency (MessageDigest is NOT thread-safe)
 		final MessageDigest pingHashFunction;
 		final MessageDigest pongHashFunction;
-		final ByteBuffer pingHashInputBuffer;
-		final ByteBuffer pongHashInputBuffer;
-
-		int failureCount = 0;
-		long pingSequence = 0L;
-		long lastMatchingPongReceived = 0L;
+		static final int HASH_INPUT_BUFFER_BYTES = Long.BYTES * 2 + Integer.BYTES;
+		final ByteBuffer pingHashInputBuffer = ByteBuffer.allocate(HASH_INPUT_BUFFER_BYTES);
+		final ByteBuffer pongHashInputBuffer = ByteBuffer.allocate(HASH_INPUT_BUFFER_BYTES);
 
 
 
@@ -436,32 +445,29 @@ public class WebsocketPingerService {
 			try {
 				pingHashFunction = MessageDigest.getInstance(hashFunction);
 				pongHashFunction = MessageDigest.getInstance(hashFunction);
-			} catch (NoSuchAlgorithmException neverHappens) { // verified by the service constructor
+			} catch (NoSuchAlgorithmException neverHappens) { // verified by the Service constructor
 				throw new RuntimeException(neverHappens);
 			}
-			pingHashInputBuffer = ByteBuffer.allocate(Long.BYTES * 2 + Integer.BYTES);
-			pongHashInputBuffer = ByteBuffer.allocate(Long.BYTES * 2 + Integer.BYTES);
-			pingDataBuffer =
-					ByteBuffer.allocate(Long.BYTES * 2 + pingHashFunction.getDigestLength());
+			pingDataBuffer = ByteBuffer.allocate(
+					Long.BYTES * 2 + pingHashFunction.getDigestLength());
 			connection.addMessageHandler(PongMessage.class, this);
 		}
 
 
 
+		int failureCount = 0;
+		long pingSequence = 0L;
+		long lastMatchingPongReceived = 0L;
+
+
+
 		/**
-		 * Sends a ping containing its "signed" sequence number and timestamp.
+		 * Sends a ping structured as described in {@link PingPongPlayer the class-level javadoc}.
 		 * In case of {@code expect-timely-pongs} mode, if the previous ping timed-out, then
 		 * increments {@link #failureCount} and if it exceeds {@link #failureLimit}, then closes the
 		 * connection.
 		 * <p>
 		 * Called by {@link #scheduler}'s worker {@code  Thread}s.</p>
-		 * <p>
-		 * The exact structure of a ping data:</p>
-		 * <pre>{@code
-		 * pingSequenceBytes + pingTimestampBytes + hashFunction(
-		 *         this.identityHashCodeBytes + pingSequenceBytes + pingTimestampBytes)}</pre>
-		 * <p>
-		 * ({@code +} denotes a byte sequence concatenation)</p>
 		 */
 		final void sendPing() {
 			synchronized (this) {  // sync with onMessage(pong)
@@ -475,10 +481,10 @@ public class WebsocketPingerService {
 				}
 			}
 
-			pingSequence++;
+			final var pingNumber = ++pingSequence;
 			pingHashInputBuffer.putInt(this.hashCode());  // using the default identity hashCode()
-			pingHashInputBuffer.putLong(pingSequence);
-			pingDataBuffer.putLong(pingSequence);
+			pingHashInputBuffer.putLong(pingNumber);
+			pingDataBuffer.putLong(pingNumber);
 			final var pingTimestampNanos = System.nanoTime();
 			pingHashInputBuffer.putLong(pingTimestampNanos);
 			pingDataBuffer.putLong(pingTimestampNanos);
@@ -514,7 +520,7 @@ public class WebsocketPingerService {
 
 
 		/**
-		 * If {@code pong} matches some previously sent ping, then does all the bookkeeping and
+		 * If {@code pong} matches some previously sent ping, then performs all the bookkeeping and
 		 * reports RTT if requested.
 		 * Ignores unsolicited {@code pong}s.
 		 * <p>
@@ -525,17 +531,17 @@ public class WebsocketPingerService {
 			final var pongTimestampNanos = System.nanoTime();
 			final var pongData = pong.getApplicationData();
 			try {
-				final var pongNumber = pongData.getLong();
-				final var timestampFromPong = pongData.getLong();
-				if (hasValidHash(pongData, pongNumber, timestampFromPong)) {  // matching pong
-					if (failureLimit >= 0 && pongNumber != lastMatchingPongReceived + 1L) {
+				final var pingNumber = pongData.getLong();
+				final var pingTimestampNanos = pongData.getLong();
+				if (hasValidHash(pongData, pingNumber, pingTimestampNanos)) {  // matching pong
+					if (failureLimit >= 0 && pingNumber != lastMatchingPongReceived + 1L) {
 						// As websocket connection is over a reliable transport (TCP or HTTP/3),
 						// nonconsecutive pongs are a symptom of a faulty implementation
 						closeFailedConnection("nonconsecutive pong");
 						return;
 					}
 
-					final var rttNanos = pongTimestampNanos - timestampFromPong;
+					final var rttNanos = pongTimestampNanos - pingTimestampNanos;
 					synchronized (this) {  // sync with sendPing()
 						lastMatchingPongReceived++;
 						if (rttNanos <= timeoutNanos) failureCount = 0;
@@ -545,25 +551,32 @@ public class WebsocketPingerService {
 			} catch (BufferUnderflowException ignored) {}  // unsolicited pong with a small data
 		}
 
+		/**
+		 * Verifies if at its current position {@code bufferToVerify} contains a valid salted hash
+		 * of {@code pingNumber} and {@code pingTimestampNanos} (as created by {@link #sendPing()}).
+		 */
 		private boolean hasValidHash(
 			ByteBuffer bufferToVerify,
-			long pongNumber,
-			long timestampFromPong
+			long pingNumber,
+			long pingTimestampNanos
 		) {
 			pongHashInputBuffer.putInt(this.hashCode());
-			pongHashInputBuffer.putLong(pongNumber);
-			pongHashInputBuffer.putLong(timestampFromPong);
+			pongHashInputBuffer.putLong(pingNumber);
+			pongHashInputBuffer.putLong(pingTimestampNanos);
 			pongHashInputBuffer.rewind();
-			return bufferToVerify.equals(ByteBuffer.wrap(
-					pongHashFunction.digest(pongHashInputBuffer.array())));
+			return bufferToVerify.equals(
+				ByteBuffer.wrap(
+					pongHashFunction.digest(pongHashInputBuffer.array())
+				)
+			);
 		}
 
 
 
 		/**
 		 * Removes itself from {@link #connection}'s message handlers.
-		 * Called by the enclosing service for {@link Session connections} that still remain open
-		 * after {@link #shutdown()}.
+		 * Called by the enclosing {@link WebsocketPingerService} for {@link Session connections}
+		 * that still remain open after {@link #shutdown()}.
 		 */
 		void deregister() {
 			try {
