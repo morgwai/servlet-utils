@@ -6,7 +6,7 @@
 
 	<groupId>pl.morgwai.base</groupId>
 	<artifactId>servlet-utils</artifactId>
-	<version>6.1-javax</version><!--jakarta-->
+	<version>6.2-SNAPSHOT-javax</version><!--jakarta-->
 
 	<name>Servlet utils</name>
 	<description>Some helpful classes when developing servlets</description>
