@@ -418,37 +418,9 @@ public class WebsocketPingerService {
 		final BiConsumer<Session, Long> rttObserver;
 		final ByteBuffer pingDataBuffer;
 
-
-
-		final byte[] saltedHash(
-			MessageDigest hashFunction,
-			ByteBuffer hashInputBuffer,
-			long pingNumber,
-			long pingTimestampNanos
-		) {
-			hashInputBuffer.rewind();
-			hashInputBuffer.putInt(this.hashCode());  // using identity hashCode() value as salt
-			hashInputBuffer.putLong(pingNumber);
-			hashInputBuffer.putLong(pingTimestampNanos);
-			return hashFunction.digest(hashInputBuffer.array());
-		}
-
-		// separate identical instances for better concurrency (MessageDigest is NOT thread-safe)
-		final MessageDigest pingHashFunction;
-		final MessageDigest pongHashFunction;
-		static final int HASH_INPUT_BUFFER_BYTES = Long.BYTES * 2 + Integer.BYTES;
-		final ByteBuffer pingHashInputBuffer = ByteBuffer.allocate(HASH_INPUT_BUFFER_BYTES);
-		final ByteBuffer pongHashInputBuffer = ByteBuffer.allocate(HASH_INPUT_BUFFER_BYTES);
-
-		final byte[] saltedHashForSendPing(long pingNumber, long pingTimestampNanos) {
-			return saltedHash(
-					pingHashFunction, pingHashInputBuffer, pingNumber, pingTimestampNanos);
-		}
-
-		final byte[] saltedHashForOnPong(long pingNumber, long pingTimestampNanos) {
-			return saltedHash(
-					pongHashFunction, pongHashInputBuffer, pingNumber, pingTimestampNanos);
-		}
+		final PingDataSaltedHashFunction saltedHashFunction;
+		/** Clone of {@link #saltedHashFunction} for better concurrency. */
+		final PingDataSaltedHashFunction saltedHashFunctionForPong;
 
 
 
@@ -468,13 +440,14 @@ public class WebsocketPingerService {
 			this.synchronizeSending = synchronizeSending;
 			this.rttObserver = rttObserver;
 			try {
-				pingHashFunction = MessageDigest.getInstance(hashFunction);
-				pongHashFunction = MessageDigest.getInstance(hashFunction);
+				final var salt = hashCode();  // using player's identity hashCode() value as salt
+				saltedHashFunction = new PingDataSaltedHashFunction(hashFunction, salt);
+				saltedHashFunctionForPong = new PingDataSaltedHashFunction(hashFunction, salt);
 			} catch (NoSuchAlgorithmException neverHappens) { // verified by the Service constructor
 				throw new RuntimeException(neverHappens);
 			}
 			pingDataBuffer = ByteBuffer.allocate(
-					Long.BYTES * 2 + pingHashFunction.getDigestLength());
+					Long.BYTES * 2 + saltedHashFunction.getDigestLength());
 			connection.addMessageHandler(PongMessage.class, this);
 		}
 
@@ -511,7 +484,7 @@ public class WebsocketPingerService {
 			pingDataBuffer.rewind();
 			pingDataBuffer.putLong(pingNumber);
 			pingDataBuffer.putLong(pingTimestampNanos);
-			pingDataBuffer.put(saltedHashForSendPing(pingNumber, pingTimestampNanos));
+			pingDataBuffer.put(saltedHashFunction.digest(pingNumber, pingTimestampNanos));
 			pingDataBuffer.rewind();
 			try {
 				if (synchronizeSending) {
@@ -577,7 +550,7 @@ public class WebsocketPingerService {
 			long pingTimestampNanos
 		) {
 			return bufferToVerify.equals(ByteBuffer.wrap(
-					saltedHashForOnPong(pingNumber, pingTimestampNanos)));
+					saltedHashFunctionForPong.digest(pingNumber, pingTimestampNanos)));
 		}
 
 
@@ -594,6 +567,43 @@ public class WebsocketPingerService {
 				// connection was closed in the mean time and some container implementations
 				// throw a RuntimeException in case of any operation on a closed connection
 			}
+		}
+	}
+
+
+
+	/**
+	 * Wraps a {@link MessageDigest} together with a salt value and provides
+	 * {@link #digest(long, long) digest(...)} variant specifically for ping data.
+	 * <p>
+	 * Similarly to {@link MessageDigest}, this class is <b>not</b> thread-safe.</p>
+	 */
+	static class PingDataSaltedHashFunction {
+
+		final MessageDigest hashFunction;
+		final ByteBuffer inputBuffer = ByteBuffer.allocate(Long.BYTES * 2 + Integer.BYTES);
+
+
+
+		PingDataSaltedHashFunction(String hashFunction, int salt) throws NoSuchAlgorithmException {
+			this.hashFunction = MessageDigest.getInstance(hashFunction);
+			inputBuffer.putInt(salt);
+			inputBuffer.mark();
+		}
+
+
+
+		final byte[] digest(long pingNumber, long pingTimestampNanos) {
+			inputBuffer.reset();  // reset to marked position right after salt
+			inputBuffer.putLong(pingNumber);
+			inputBuffer.putLong(pingTimestampNanos);
+			return hashFunction.digest(inputBuffer.array());
+		}
+
+
+
+		int getDigestLength() {
+			return hashFunction.getDigestLength();
 		}
 	}
 
