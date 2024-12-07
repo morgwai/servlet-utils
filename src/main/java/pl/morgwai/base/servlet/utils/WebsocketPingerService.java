@@ -404,7 +404,7 @@ public class WebsocketPingerService {
 	 * Ping data structure:</p>
 	 * <pre>{@code
 	 * pingNumberBytes + pingTimestampBytes + hashFunction(
-	 *         this.identityHashCodeBytes + pingNumberBytes + pingTimestampBytes)}</pre>
+	 *         salt + pingNumberBytes + pingTimestampBytes)}</pre>
 	 * <p>
 	 * ({@code +} denotes a byte sequence concatenation)</p>
 	 */
@@ -418,12 +418,37 @@ public class WebsocketPingerService {
 		final BiConsumer<Session, Long> rttObserver;
 		final ByteBuffer pingDataBuffer;
 
-		// separate instances for better concurrency (MessageDigest is NOT thread-safe)
+
+
+		final byte[] saltedHash(
+			MessageDigest hashFunction,
+			ByteBuffer hashInputBuffer,
+			long pingNumber,
+			long pingTimestampNanos
+		) {
+			hashInputBuffer.rewind();
+			hashInputBuffer.putInt(this.hashCode());  // using identity hashCode() value as salt
+			hashInputBuffer.putLong(pingNumber);
+			hashInputBuffer.putLong(pingTimestampNanos);
+			return hashFunction.digest(hashInputBuffer.array());
+		}
+
+		// separate identical instances for better concurrency (MessageDigest is NOT thread-safe)
 		final MessageDigest pingHashFunction;
 		final MessageDigest pongHashFunction;
 		static final int HASH_INPUT_BUFFER_BYTES = Long.BYTES * 2 + Integer.BYTES;
 		final ByteBuffer pingHashInputBuffer = ByteBuffer.allocate(HASH_INPUT_BUFFER_BYTES);
 		final ByteBuffer pongHashInputBuffer = ByteBuffer.allocate(HASH_INPUT_BUFFER_BYTES);
+
+		final byte[] saltedHashForSendPing(long pingNumber, long pingTimestampNanos) {
+			return saltedHash(
+					pingHashFunction, pingHashInputBuffer, pingNumber, pingTimestampNanos);
+		}
+
+		final byte[] saltedHashForOnPong(long pingNumber, long pingTimestampNanos) {
+			return saltedHash(
+					pongHashFunction, pongHashInputBuffer, pingNumber, pingTimestampNanos);
+		}
 
 
 
@@ -482,13 +507,11 @@ public class WebsocketPingerService {
 			}
 
 			final var pingNumber = ++pingSequence;
-			pingHashInputBuffer.putInt(this.hashCode());  // using the default identity hashCode()
-			pingHashInputBuffer.putLong(pingNumber);
-			pingDataBuffer.putLong(pingNumber);
 			final var pingTimestampNanos = System.nanoTime();
-			pingHashInputBuffer.putLong(pingTimestampNanos);
+			pingDataBuffer.rewind();
+			pingDataBuffer.putLong(pingNumber);
 			pingDataBuffer.putLong(pingTimestampNanos);
-			pingDataBuffer.put(pingHashFunction.digest(pingHashInputBuffer.array()));
+			pingDataBuffer.put(saltedHashForSendPing(pingNumber, pingTimestampNanos));
 			pingDataBuffer.rewind();
 			try {
 				if (synchronizeSending) {
@@ -498,9 +521,6 @@ public class WebsocketPingerService {
 				} else {
 					connector.sendPing(pingDataBuffer);
 				}
-				// prepare for the next ping:
-				pingHashInputBuffer.rewind();
-				pingDataBuffer.rewind();
 			} catch (IOException e) {
 				// on most container implementations the connection is PROBABLY already closed, but
 				// just in case:
@@ -551,24 +571,13 @@ public class WebsocketPingerService {
 			} catch (BufferUnderflowException ignored) {}  // unsolicited pong with a small data
 		}
 
-		/**
-		 * Verifies if at its current position {@code bufferToVerify} contains a valid salted hash
-		 * of {@code pingNumber} and {@code pingTimestampNanos} (as created by {@link #sendPing()}).
-		 */
 		private boolean hasValidHash(
 			ByteBuffer bufferToVerify,
 			long pingNumber,
 			long pingTimestampNanos
 		) {
-			pongHashInputBuffer.putInt(this.hashCode());
-			pongHashInputBuffer.putLong(pingNumber);
-			pongHashInputBuffer.putLong(pingTimestampNanos);
-			pongHashInputBuffer.rewind();
-			return bufferToVerify.equals(
-				ByteBuffer.wrap(
-					pongHashFunction.digest(pongHashInputBuffer.array())
-				)
-			);
+			return bufferToVerify.equals(ByteBuffer.wrap(
+					saltedHashForOnPong(pingNumber, pingTimestampNanos)));
 		}
 
 
