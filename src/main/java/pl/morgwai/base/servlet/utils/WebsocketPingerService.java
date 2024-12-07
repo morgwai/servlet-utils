@@ -342,6 +342,7 @@ public class WebsocketPingerService {
 	 * called.
 	 */
 	public Set<Session> shutdown() {
+		connectionPingingTasks.values().forEach(task -> task.cancel(false));
 		scheduler.shutdown();
 		for (var pingPongPlayer: connectionPingPongPlayers.values()) pingPongPlayer.deregister();
 		final var remaining = Set.copyOf(connectionPingPongPlayers.keySet());
