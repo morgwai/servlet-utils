@@ -592,17 +592,17 @@ public class WebsocketPingerService {
 		PingDataSaltedHashFunction(String hashFunction, byte[] salt)
 				throws NoSuchAlgorithmException {
 			this.hashFunction = MessageDigest.getInstance(hashFunction);
-			inputBuffer = ByteBuffer.allocate(Long.BYTES * 2 + salt.length);
-			inputBuffer.put(salt);
-			inputBuffer.mark();
+			inputBuffer = ByteBuffer.allocate(Long.BYTES * 2 + salt.length)
+				.put(salt)
+				.mark();
 		}
 
 
 
 		final byte[] digest(long pingNumber, long pingTimestampNanos) {
-			inputBuffer.reset();  // reset to marked position right after salt
-			inputBuffer.putLong(pingNumber);
-			inputBuffer.putLong(pingTimestampNanos);
+			inputBuffer.reset()  // reset to the marked position right after salt
+				.putLong(pingNumber)
+				.putLong(pingTimestampNanos);
 			return hashFunction.digest(inputBuffer.array());
 		}
 
