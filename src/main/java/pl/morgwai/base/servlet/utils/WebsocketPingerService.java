@@ -457,9 +457,9 @@ public class WebsocketPingerService {
 
 
 
+		long lastSentPingNumber = 0L;
+		long lastMatchingPongNumber = 0L;
 		int failureCount = 0;
-		long pingSequence = 0L;
-		long lastMatchingPongReceived = 0L;
 
 
 
@@ -473,7 +473,7 @@ public class WebsocketPingerService {
 		 */
 		final void sendPing() {
 			synchronized (this) {  // sync with onMessage(pong)
-				if (failureLimit >= 0 && pingSequence > lastMatchingPongReceived) {
+				if (failureLimit >= 0 && lastSentPingNumber > lastMatchingPongNumber) {
 					// expect-timely-pongs mode && the previous ping timed-out
 					failureCount++;
 					if (failureCount > failureLimit) {
@@ -483,13 +483,13 @@ public class WebsocketPingerService {
 				}
 			}
 
-			final var pingNumber = ++pingSequence;
+			final var pingNumber = ++lastSentPingNumber;
 			final var pingTimestampNanos = System.nanoTime();
-			pingDataBuffer.rewind();
-			pingDataBuffer.putLong(pingNumber);
-			pingDataBuffer.putLong(pingTimestampNanos);
-			pingDataBuffer.put(saltedHashFunction.digest(pingNumber, pingTimestampNanos));
-			pingDataBuffer.rewind();
+			pingDataBuffer.rewind()
+				.putLong(pingNumber)
+				.putLong(pingTimestampNanos)
+				.put(saltedHashFunction.digest(pingNumber, pingTimestampNanos))
+				.rewind();
 			try {
 				if (synchronizeSending) {
 					synchronized (connection) {
@@ -531,7 +531,7 @@ public class WebsocketPingerService {
 				final var pingNumber = pongData.getLong();
 				final var pingTimestampNanos = pongData.getLong();
 				if (hasValidHash(pongData, pingNumber, pingTimestampNanos)) {  // matching pong
-					if (failureLimit >= 0 && pingNumber != lastMatchingPongReceived + 1L) {
+					if (failureLimit >= 0 && pingNumber != lastMatchingPongNumber + 1L) {
 						// As websocket connection is over a reliable transport (TCP or HTTP/3),
 						// nonconsecutive pongs are a symptom of a faulty implementation
 						closeFailedConnection("nonconsecutive pong");
@@ -540,7 +540,7 @@ public class WebsocketPingerService {
 
 					final var rttNanos = pongTimestampNanos - pingTimestampNanos;
 					synchronized (this) {  // sync with sendPing()
-						lastMatchingPongReceived++;
+						lastMatchingPongNumber++;
 						if (rttNanos <= timeoutNanos) failureCount = 0;
 					}
 					if (rttObserver != null) rttObserver.accept(connection, rttNanos);
