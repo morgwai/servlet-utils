@@ -235,8 +235,9 @@ public abstract class WebsocketPingerServiceTests {
 			assertTrue(
 				"RTT should be accurately reported (" + rttInaccuracyNanos + "ns, expected <"
 						+ EXPECTED_RTT_INACCURACY_NANOS + "ns. This may fail due to CPU usage "
-						+ "spikes by other processes, so try to rerun few times, but persisting "
-						+  "inaccuracy of several orders of magnitude probably means a bug)",
+						+ "spikes by other processes, so try to rerun a few times, but a persisting"
+						+ " inaccuracy several orders of magnitude higher than expected probably "
+						+ "means a bug)",
 				abs(rttInaccuracyNanos) < EXPECTED_RTT_INACCURACY_NANOS
 			);
 		});
