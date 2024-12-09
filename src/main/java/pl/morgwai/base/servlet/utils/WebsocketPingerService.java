@@ -440,7 +440,11 @@ public class WebsocketPingerService {
 			this.synchronizeSending = synchronizeSending;
 			this.rttObserver = rttObserver;
 			try {
-				final var salt = hashCode();  // using player's identity hashCode() value as salt
+				final var salt = ByteBuffer.allocate(Integer.BYTES * 3)
+					.putInt(System.identityHashCode(this))
+					.putInt(System.identityHashCode(connection))
+					.putInt(System.identityHashCode(connector))
+					.array();
 				saltedHashFunction = new PingDataSaltedHashFunction(hashFunction, salt);
 				saltedHashFunctionForPong = new PingDataSaltedHashFunction(hashFunction, salt);
 			} catch (NoSuchAlgorithmException neverHappens) { // verified by the Service constructor
@@ -581,13 +585,15 @@ public class WebsocketPingerService {
 	static class PingDataSaltedHashFunction {
 
 		final MessageDigest hashFunction;
-		final ByteBuffer inputBuffer = ByteBuffer.allocate(Long.BYTES * 2 + Integer.BYTES);
+		final ByteBuffer inputBuffer;
 
 
 
-		PingDataSaltedHashFunction(String hashFunction, int salt) throws NoSuchAlgorithmException {
+		PingDataSaltedHashFunction(String hashFunction, byte[] salt)
+				throws NoSuchAlgorithmException {
 			this.hashFunction = MessageDigest.getInstance(hashFunction);
-			inputBuffer.putInt(salt);
+			inputBuffer = ByteBuffer.allocate(Long.BYTES * 2 + salt.length);
+			inputBuffer.put(salt);
 			inputBuffer.mark();
 		}
 
