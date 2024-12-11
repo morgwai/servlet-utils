@@ -406,7 +406,9 @@ public class WebsocketPingerService {
 	 * pingNumberBytes + pingTimestampBytes + hashFunction(
 	 *         salt + pingNumberBytes + pingTimestampBytes)}</pre>
 	 * <p>
-	 * ({@code +} denotes a byte sequence concatenation)</p>
+	 * {@code +} denotes a byte sequence concatenation,<br/>
+	 * {@code salt} is a value unique for each {@code connection} and constant across all its pings.
+	 * </p>
 	 */
 	static class PingPongPlayer implements MessageHandler.Whole<PongMessage> {
 
