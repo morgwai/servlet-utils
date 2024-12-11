@@ -24,7 +24,7 @@ import static java.util.concurrent.TimeUnit.*;
  * {@link #WebsocketPingerService(long, TimeUnit, int, String, ScheduledExecutorService, boolean)
  * expect-timely-pongs mode} or
  * {@link #WebsocketPingerService(long, TimeUnit, String, ScheduledExecutorService, boolean)
- * keep-alive-only mode}. The {@code Service} can be used both on the client and the server side.
+ * keep-alive-only mode}. The {@code Service} may be used both on client or server sides.
  * <p>
  * Instances are usually created at app startups and stored in locations easily reachable for
  * {@code Endpoint} instances or a code that manages them (for example as a
@@ -33,7 +33,7 @@ import static java.util.concurrent.TimeUnit.*;
  * <p>
  * At app shutdowns, {@link #shutdown()} should be called to terminate the pinging
  * {@link ScheduledExecutorService scheduler}, followed by {@link #awaitTermination(long, TimeUnit)}
- * and if it fails then also {@link #shutdownNow()} similarly as with {@link ExecutorService}s.
+ * and if it fails, then also {@link #shutdownNow()} similarly as with {@link ExecutorService}s.
  * For convenience {@link #tryEnforceTermination()} method was provided that combines the previous
  * 3.</p>
  * <p>
@@ -76,9 +76,9 @@ public class WebsocketPingerService {
 
 	/**
 	 * Constructs a new {@code Service} in {@code expect-timely-pongs} mode.
-	 * Each timeout adds to a given {@link Session connection}'s failure count, unmatched pongs are
-	 * ignored, matching pongs received in a nonconsecutive order cause the connection to be closed
-	 * immediately with {@link CloseCodes#PROTOCOL_ERROR}.
+	 * Each timeout increments the corresponding {@link Session connection}'s failure count,
+	 * unmatched pongs are ignored, matching pongs received in a nonconsecutive order cause the
+	 * connection to be closed immediately with {@link CloseCodes#PROTOCOL_ERROR}.
 	 * @param interval interval between pings and also timeout for pongs. Specifically, the value of
 	 *     this param will be passed as the 3rd param to
 	 *     {@link ScheduledExecutorService#scheduleWithFixedDelay(Runnable, long, long, TimeUnit)
@@ -177,7 +177,7 @@ public class WebsocketPingerService {
 	 * Constructs a new {@code Service} in {@code keep-alive-only} mode.
 	 * The {@code Service} will not actively close any {@link Session connection} unless an
 	 * {@link IOException} occurs, which on most container implementations cause the connection to
-	 * be closed automatically anyway. The params have the similar meaning as in {@link
+	 * be closed automatically anyway. The params have the same meaning as in {@link
 	 * #WebsocketPingerService(long, TimeUnit, int, String, ScheduledExecutorService, boolean)}.
 	 */
 	public WebsocketPingerService(
@@ -343,7 +343,10 @@ public class WebsocketPingerService {
 
 
 
-	/** The number of currently registered {@link Session connections}. */
+	/**
+	 * The number of currently {@link #addConnection(Session) registered}
+	 * {@link Session connections}.
+	 */
 	public int getNumberOfConnections() {
 		return connectionPingPongPlayers.size();
 	}
@@ -352,8 +355,8 @@ public class WebsocketPingerService {
 
 	/**
 	 * Shutdowns this {@code Service} and {@link ScheduledExecutorService#shutdown() its scheduler}.
-	 * After a call to this method this instance becomes no longer usable and should be discarded:
-	 * the only methods that may be called are {@code #shutdown()} (idempotent),
+	 * After a call to this method, this instance becomes no longer usable and should be discarded:
+	 * the only methods that may be called are {@code shutdown()} (idempotent),
 	 * {@link #awaitTermination(long, TimeUnit)}, {@link #tryEnforceTermination(long, TimeUnit)} and
 	 * {@link #shutdownNow()}.
 	 * @return {@link Session connections} that were still registered at the time this method was
@@ -421,7 +424,9 @@ public class WebsocketPingerService {
 	 * pingNumberBytes + pingTimestampBytes + hashFunction(
 	 *         salt + pingNumberBytes + pingTimestampBytes)}</pre>
 	 * <p>
-	 * ({@code +} denotes a byte sequence concatenation)</p>
+	 * {@code +} denotes a byte sequence concatenation,<br/>
+	 * {@code salt} is a value unique for each {@code connection} and constant across all its pings.
+	 * </p>
 	 */
 	static class PingPongPlayer implements MessageHandler.Whole<PongMessage> {
 
