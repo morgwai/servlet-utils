@@ -148,11 +148,11 @@ public abstract class WebsocketPingerServiceTests {
 			final var pongReceived = new CountDownLatch(1);
 			final var player = new PingPongPlayer(
 				serverEndpoint.connection,
+				(connection, rttNanos) -> rttReportedHolder[0] = true,
 				Long.MAX_VALUE,
 				-1,
-				false,
-				(connection, rttNanos) -> rttReportedHolder[0] = true,
-				DEFAULT_HASH_FUNCTION
+				DEFAULT_HASH_FUNCTION,
+				false
 			) {
 				@Override public void onMessage(PongMessage pong) {
 					log.fine("server " + PATH + " got pong, modifying data");
@@ -190,11 +190,11 @@ public abstract class WebsocketPingerServiceTests {
 			final var pongReceived = new CountDownLatch(1);
 			final var player = new PingPongPlayer(
 				serverEndpoint.connection,
+				(connection, rttNanos) -> reportedRttNanosHolder[0] = rttNanos,
 				Long.MAX_VALUE,
 				2,
-				false,
-				(connection, rttNanos) -> reportedRttNanosHolder[0] = rttNanos,
-				DEFAULT_HASH_FUNCTION
+				DEFAULT_HASH_FUNCTION,
+				false
 			) {
 				@Override public void onMessage(PongMessage pong) {
 					log.fine("server " + PATH + " got pong, forwarding");
@@ -251,11 +251,11 @@ public abstract class WebsocketPingerServiceTests {
 			final var pongReceived = new CountDownLatch(1);
 			final var player = new PingPongPlayer(
 				serverEndpoint.connection,
+				null,
 				Long.MAX_VALUE,
 				2,
-				false,
-				null,
-				DEFAULT_HASH_FUNCTION
+				DEFAULT_HASH_FUNCTION,
+				false
 			) {
 				@Override public void onMessage(PongMessage pong) {
 					log.fine("server " + PATH + " got pong, forwarding");
@@ -287,11 +287,11 @@ public abstract class WebsocketPingerServiceTests {
 			final var pongReceived = new CountDownLatch(1);
 			final var player = new PingPongPlayer(
 				serverEndpoint.connection,
+				null,
 				Long.MAX_VALUE,
 				2,
-				false,
-				null,
-				DEFAULT_HASH_FUNCTION
+				DEFAULT_HASH_FUNCTION,
+				false
 			) {
 				@Override public void onMessage(PongMessage pong) {
 					log.fine("server " + PATH + " got pong, modifying data");
@@ -319,11 +319,11 @@ public abstract class WebsocketPingerServiceTests {
 			final var rttReportReceived = new CountDownLatch(1);
 			final var player = new PingPongPlayer(
 				serverEndpoint.connection,
+				(connection, rttNanos) -> rttReportReceived.countDown(),
 				10L,
 				1,
-				false,
-				(connection, rttNanos) -> rttReportReceived.countDown(),
-				DEFAULT_HASH_FUNCTION
+				DEFAULT_HASH_FUNCTION,
+				false
 			) {
 				byte[] savedPongData = null;
 
@@ -404,11 +404,11 @@ public abstract class WebsocketPingerServiceTests {
 		};
 		final var player = new PingPongPlayer(
 			serverEndpoint.connection,
+			null,
 			Long.MAX_VALUE,
 			failureLimit,
-			false,
-			null,
-			DEFAULT_HASH_FUNCTION
+			DEFAULT_HASH_FUNCTION,
+			false
 		) {
 			int pongCounter = 0;
 
@@ -515,11 +515,11 @@ public abstract class WebsocketPingerServiceTests {
 			final var pongReceived = new CountDownLatch(1);
 			final var player = new PingPongPlayer(
 				clientEndpoint.connection,
+				null,
 				Long.MAX_VALUE,
 				2,
-				false,
-				null,
-				DEFAULT_HASH_FUNCTION
+				DEFAULT_HASH_FUNCTION,
+				false
 			) {
 				@Override public void onMessage(PongMessage pong) {
 					log.fine("client " + PATH + " got pong, forwarding");

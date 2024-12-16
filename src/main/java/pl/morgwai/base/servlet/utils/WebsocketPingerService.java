@@ -276,11 +276,11 @@ public class WebsocketPingerService {
 	public void addConnection(Session connection, BiConsumer<Session, Long> rttObserver) {
 		final var pingPongPlayer = new PingPongPlayer(
 			connection,
+			rttObserver,
 			intervalNanos,
 			failureLimit,
-			synchronizeSending,
-			rttObserver,
-			hashFunction
+			hashFunction,
+			synchronizeSending
 		);
 		connectionPingPongPlayers.put(connection, pingPongPlayer);
 		connectionPingingTasks.put(
@@ -411,10 +411,10 @@ public class WebsocketPingerService {
 
 		final Session connection;
 		final Async connector;
-		final int failureLimit;
-		final long timeoutNanos;
-		final boolean synchronizeSending;
 		final BiConsumer<Session, Long> rttObserver;
+		final long timeoutNanos;
+		final int failureLimit;
+		final boolean synchronizeSending;
 		final ByteBuffer pingDataBuffer;
 
 		final PingDataSaltedHashFunction saltedHashFunction;
@@ -426,18 +426,18 @@ public class WebsocketPingerService {
 		/** For both modes: negative {@code failureLimit} means {@code keep-alive-only}. */
 		PingPongPlayer(
 			Session connection,
+			BiConsumer<Session, Long> rttObserver,
 			long timeoutNanos,
 			int failureLimit,
-			boolean synchronizeSending,
-			BiConsumer<Session, Long> rttObserver,
-			String hashFunction
+			String hashFunction,
+			boolean synchronizeSending
 		) {
 			this.connection = connection;
 			this.connector = connection.getAsyncRemote();
+			this.rttObserver = rttObserver;
 			this.timeoutNanos = timeoutNanos;
 			this.failureLimit = failureLimit;
 			this.synchronizeSending = synchronizeSending;
-			this.rttObserver = rttObserver;
 			try {
 				final var salt = ByteBuffer.allocate(Integer.BYTES * 3)
 					.putInt(System.identityHashCode(this))
