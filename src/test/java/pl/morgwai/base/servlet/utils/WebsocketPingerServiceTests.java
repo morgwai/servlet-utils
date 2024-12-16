@@ -6,6 +6,7 @@ import java.lang.reflect.Proxy;
 import java.net.CookieManager;
 import java.net.URI;
 import java.nio.ByteBuffer;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -39,6 +40,7 @@ import static org.junit.Assert.*;
 import static pl.morgwai.base.jul.JulConfigurator.*;
 import static pl.morgwai.base.jul.JulFormatter.FORMATTER_SUFFIX;
 import static pl.morgwai.base.servlet.utils.WebsocketPingerService.DEFAULT_HASH_FUNCTION;
+import static pl.morgwai.base.servlet.utils.WebsocketPingerService.PingDataSaltedHashFunction;
 import static pl.morgwai.base.servlet.utils.tests.WebsocketServer.APP_PATH;
 
 
@@ -729,6 +731,34 @@ public abstract class WebsocketPingerServiceTests {
 
 	public static class DumbServerEndpoint extends Endpoint {
 		@Override public void onOpen(Session connection, EndpointConfig config) {}
+	}
+
+
+
+	@Test
+	public void testPingDataSaltedHashFunction() throws NoSuchAlgorithmException {
+		final var salt = "randomSalt!".getBytes(UTF_8);
+		final var hashFunction = new PingDataSaltedHashFunction(DEFAULT_HASH_FUNCTION, salt);
+		final var timestamp = System.nanoTime();
+		final var pingNumber = 135L;
+		final var firstHash = hashFunction.digest(pingNumber, timestamp);
+		assertEquals("hash length should be the same as reported by hashFunction",
+				hashFunction.getDigestLength(), firstHash.length);
+        assertArrayEquals("hashFunction should be deterministic",
+				firstHash, hashFunction.digest(pingNumber, timestamp));
+		assertFalse("changing pingNumber should change the hash",
+				Arrays.equals(firstHash, hashFunction.digest(pingNumber + 1L, timestamp)));
+		assertFalse("changing timestamp should change the hash",
+				Arrays.equals(firstHash, hashFunction.digest(pingNumber, System.nanoTime())));
+
+		final var clone = new PingDataSaltedHashFunction(DEFAULT_HASH_FUNCTION, salt);
+		assertArrayEquals("hashFunction clone should produce the same results",
+				firstHash, clone.digest(pingNumber, timestamp));
+
+		final var anotherSaltFunction = new PingDataSaltedHashFunction(
+				DEFAULT_HASH_FUNCTION, "anotherSalt".getBytes(UTF_8));
+		assertFalse("changing salt should change the hash",
+				Arrays.equals(firstHash, anotherSaltFunction.digest(pingNumber, timestamp)));
 	}
 
 
