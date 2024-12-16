@@ -14,13 +14,12 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Logger;
-
 import javax.websocket.*;
 import javax.websocket.CloseReason.CloseCode;
+import org.junit.*;
 
 import org.eclipse.jetty.websocket.javax.client.JavaxWebSocketClientContainerProvider;
 import org.eclipse.jetty.websocket.javax.common.JavaxWebSocketContainer;
-import org.junit.*;
 import pl.morgwai.base.jul.JulFormatter;
 import pl.morgwai.base.servlet.utils.WebsocketPingerService.PingPongPlayer;
 import pl.morgwai.base.servlet.utils.tests.WebsocketServer;
@@ -32,10 +31,8 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.logging.Level.FINEST;
 import static java.util.logging.Level.WARNING;
-
 import static javax.websocket.CloseReason.CloseCodes.NORMAL_CLOSURE;
 import static javax.websocket.CloseReason.CloseCodes.PROTOCOL_ERROR;
-
 import static org.junit.Assert.*;
 import static pl.morgwai.base.jul.JulConfigurator.*;
 import static pl.morgwai.base.jul.JulFormatter.FORMATTER_SUFFIX;
