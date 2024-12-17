@@ -741,16 +741,16 @@ public abstract class WebsocketPingerServiceTests {
 		final var firstHash = hashFunction.digest(pingNumber, timestamp);
 		assertEquals("hash length should be the same as reported by hashFunction",
 				hashFunction.getDigestLength(), firstHash.length);
-        assertArrayEquals("hashFunction should be deterministic",
+        assertArrayEquals("hashFunction should produce consistent results",
 				firstHash, hashFunction.digest(pingNumber, timestamp));
 		assertFalse("changing pingNumber should change the hash",
 				Arrays.equals(firstHash, hashFunction.digest(pingNumber + 1L, timestamp)));
 		assertFalse("changing timestamp should change the hash",
 				Arrays.equals(firstHash, hashFunction.digest(pingNumber, System.nanoTime())));
 
-		final var clone = new PingDataSaltedHashFunction(DEFAULT_HASH_FUNCTION, salt);
-		assertArrayEquals("hashFunction clone should produce the same results",
-				firstHash, clone.digest(pingNumber, timestamp));
+		final var hashFunctionClone = new PingDataSaltedHashFunction(DEFAULT_HASH_FUNCTION, salt);
+		assertArrayEquals("hashFunctionClone should produce the same results",
+				firstHash, hashFunctionClone.digest(pingNumber, timestamp));
 
 		final var anotherSaltFunction = new PingDataSaltedHashFunction(
 				DEFAULT_HASH_FUNCTION, "anotherSalt".getBytes(UTF_8));

@@ -82,13 +82,14 @@ public class WebsocketPingerService {
 	 * @param interval interval between pings and also timeout for pongs. Specifically, the value of
 	 *     this param will be passed as the 3rd param to
 	 *     {@link ScheduledExecutorService#scheduleWithFixedDelay(Runnable, long, long, TimeUnit)
-	 *     scheduler.scheduleWithFixedDelay(pingingTask, 0L, interval, unit)} when scheduling pings.
-	 *     While this class does not enforce any hard limits, as of typical network and CPU
-	 *     capabilities of 2024, values below 100ms are probably not a good idea in most cases and
-	 *     anything below 20ms is pure Sparta.
-	 * @param unit unit for {@code interval} passed as the 4th param to
+	 *     scheduler.scheduleWithFixedDelay(pingingTask, 0L, interval, intervalUnit)} when
+	 *     scheduling pings. While this class does not enforce any hard limits, as of typical
+	 *     network and CPU capabilities of 2024, values below 100ms are probably not a good idea in
+	 *     most cases and anything below 20ms is pure Sparta.
+	 * @param intervalUnit unit for {@code interval} passed as the 4th param to
 	 *     {@link ScheduledExecutorService#scheduleWithFixedDelay(Runnable, long, long, TimeUnit)
-	 *     scheduler.scheduleWithFixedDelay(pingingTask, 0L, interval, unit)} when scheduling pings.
+	 *     scheduler.scheduleWithFixedDelay(pingingTask, 0L, interval, intervalUnit)} when
+	 *     scheduling pings.
 	 * @param failureLimit limit of timed-out pongs: if exceeded, then the given
 	 *     {@link Session connection} is closed with {@link CloseCodes#PROTOCOL_ERROR}. Each
 	 *     matching, timely pong resets the {@link Session connection}'s failure counter.
@@ -113,23 +114,38 @@ public class WebsocketPingerService {
 	 */
 	public WebsocketPingerService(
 		long interval,
-		TimeUnit unit,
+		TimeUnit intervalUnit,
 		int failureLimit,
 		String hashFunction,
 		ScheduledExecutorService scheduler,
 		boolean synchronizeSending
 	) {
-		this(interval, unit, failureLimit, hashFunction, scheduler, synchronizeSending, true);
+		this(
+			interval,
+			intervalUnit,
+			failureLimit,
+			hashFunction,
+			scheduler,
+			synchronizeSending,
+			true
+		);
 	}
 
 	/**
 	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, String, ScheduledExecutorService,
-	 * boolean) WebsocketPingerService} <code>(interval, unit, failureLimit,
+	 * boolean) WebsocketPingerService} <code>(interval, intervalUnit, failureLimit,
 	 * {@value #DEFAULT_HASH_FUNCTION}, {@link #newDefaultScheduler()}, false)</code>
 	 * ({@code expect-timely-pongs} mode).
 	 */
-	public WebsocketPingerService(long interval, TimeUnit unit, int failureLimit) {
-		this(interval, unit, failureLimit, DEFAULT_HASH_FUNCTION, newDefaultScheduler(), false);
+	public WebsocketPingerService(long interval, TimeUnit intervalUnit, int failureLimit) {
+		this(
+			interval,
+			intervalUnit,
+			failureLimit,
+			DEFAULT_HASH_FUNCTION,
+			newDefaultScheduler(),
+			false
+		);
 	}
 
 	/**
@@ -166,22 +182,22 @@ public class WebsocketPingerService {
 	 */
 	public WebsocketPingerService(
 		long interval,
-		TimeUnit unit,
+		TimeUnit intervalUnit,
 		String hashFunction,
 		ScheduledExecutorService scheduler,
 		boolean synchronizeSending
 	) {
-		this(interval, unit, -1, hashFunction, scheduler, synchronizeSending, false);
+		this(interval, intervalUnit, -1, hashFunction, scheduler, synchronizeSending, false);
 	}
 
 	/**
 	 * Calls
 	 * {@link #WebsocketPingerService(long, TimeUnit, String, ScheduledExecutorService, boolean)
-	 * WebsocketPingerService}<code>(interval, unit, {@value #DEFAULT_HASH_FUNCTION},
+	 * WebsocketPingerService}<code>(interval, intervalUnit, {@value #DEFAULT_HASH_FUNCTION},
 	 * {@link #newDefaultScheduler()}, false)</code> ({@code keep-alive-only} mode).
 	 */
-	public WebsocketPingerService(long interval, TimeUnit unit) {
-		this(interval, unit, DEFAULT_HASH_FUNCTION, newDefaultScheduler(), false);
+	public WebsocketPingerService(long interval, TimeUnit intervalUnit) {
+		this(interval, intervalUnit, DEFAULT_HASH_FUNCTION, newDefaultScheduler(), false);
 	}
 
 	/**
@@ -210,7 +226,7 @@ public class WebsocketPingerService {
 	/** Low-level constructor that performs the actual initialization. */
 	WebsocketPingerService(
 		long interval,
-		TimeUnit unit,
+		TimeUnit intervalUnit,
 		int failureLimit,
 		String hashFunction,
 		ScheduledExecutorService scheduler,
@@ -227,7 +243,7 @@ public class WebsocketPingerService {
 		} catch (NoSuchAlgorithmException e) {
 			throw new IllegalArgumentException(e);
 		}
-		this.intervalNanos = unit.toNanos(interval);
+		this.intervalNanos = intervalUnit.toNanos(interval);
 		this.failureLimit = failureLimit;
 		this.synchronizeSending = synchronizeSending;
 		this.hashFunction = hashFunction;
@@ -416,10 +432,9 @@ public class WebsocketPingerService {
 		final int failureLimit;
 		final boolean synchronizeSending;
 		final ByteBuffer pingDataBuffer;
-
 		final PingDataSaltedHashFunction saltedHashFunction;
-		/** Clone of {@link #saltedHashFunction} for better concurrency. */
-		final PingDataSaltedHashFunction saltedHashFunctionForPong;
+		/** For verifying pongs, improves concurrency. */
+		final PingDataSaltedHashFunction saltedHashFunctionClone;
 
 
 
@@ -445,7 +460,7 @@ public class WebsocketPingerService {
 					.putInt(System.identityHashCode(connector))
 					.array();
 				saltedHashFunction = new PingDataSaltedHashFunction(hashFunction, salt);
-				saltedHashFunctionForPong = new PingDataSaltedHashFunction(hashFunction, salt);
+				saltedHashFunctionClone = new PingDataSaltedHashFunction(hashFunction, salt);
 			} catch (NoSuchAlgorithmException neverHappens) { // verified by the Service constructor
 				throw new RuntimeException(neverHappens);
 			}
@@ -510,7 +525,7 @@ public class WebsocketPingerService {
 			}
 			try {
 				connection.close(new CloseReason(CloseCodes.PROTOCOL_ERROR, reason));
-			} catch (IOException | RuntimeException ignored) {
+			} catch (IOException | RuntimeException connectionAlreadyClosed) {
 				// this MUST mean the connection is already closed...
 			}
 		}
@@ -546,7 +561,7 @@ public class WebsocketPingerService {
 					}
 					if (rttObserver != null) rttObserver.accept(connection, rttNanos);
 				}  // else: unsolicited pong
-			} catch (BufferUnderflowException ignored) {}  // unsolicited pong with a small data
+			} catch (BufferUnderflowException unsolicitedPongWithShortData) {}
 		}
 
 		private boolean hasValidHash(
@@ -554,8 +569,8 @@ public class WebsocketPingerService {
 			long pingNumber,
 			long pingTimestampNanos
 		) {
-			return bufferToVerify.equals(ByteBuffer.wrap(
-					saltedHashFunctionForPong.digest(pingNumber, pingTimestampNanos)));
+			final var expectedHash = saltedHashFunctionClone.digest(pingNumber, pingTimestampNanos);
+			return bufferToVerify.equals(ByteBuffer.wrap(expectedHash));
 		}
 
 
@@ -568,9 +583,10 @@ public class WebsocketPingerService {
 		void deregister() {
 			try {
 				connection.removeMessageHandler(this);
-			} catch (RuntimeException ignored) {
-				// connection was closed in the mean time and some container implementations
-				// throw a RuntimeException in case of any operation on a closed connection
+			} catch (RuntimeException containerWhiningAboutClosedConnection) {
+				// connection was closed between calls to shutdown() and this method and some
+				// container implementations throw a RuntimeException in case of any operation on a
+				// closed connection
 			}
 		}
 	}
