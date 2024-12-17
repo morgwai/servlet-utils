@@ -512,7 +512,7 @@ public class WebsocketPingerService {
 			}
 			try {
 				connection.close(new CloseReason(CloseCodes.PROTOCOL_ERROR, reason));
-			} catch (IOException | RuntimeException ignored) {
+			} catch (IOException | RuntimeException connectionAlreadyClosed) {
 				// this MUST mean the connection is already closed...
 			}
 		}
@@ -570,9 +570,10 @@ public class WebsocketPingerService {
 		void deregister() {
 			try {
 				connection.removeMessageHandler(this);
-			} catch (RuntimeException ignored) {
-				// connection was closed in the mean time and some container implementations
-				// throw a RuntimeException in case of any operation on a closed connection
+			} catch (RuntimeException containerWhiningAboutClosedConnection) {
+				// connection was closed between calls to shutdown() and this method and some
+				// container implementations throw a RuntimeException in case of any operation on a
+				// closed connection
 			}
 		}
 	}
