@@ -510,7 +510,9 @@ public class WebsocketPingerService {
 			}
 			try {
 				connection.close(new CloseReason(CloseCodes.PROTOCOL_ERROR, reason));
-			} catch (IOException ignored) {}  // this MUST mean the connection is already closed...
+			} catch (IOException | RuntimeException ignored) {
+				// this MUST mean the connection is already closed...
+			}
 		}
 
 
