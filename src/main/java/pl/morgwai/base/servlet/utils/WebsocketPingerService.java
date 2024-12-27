@@ -546,7 +546,9 @@ public class WebsocketPingerService {
 			try {
 				final var pingNumber = pongData.getLong();
 				final var pingTimestampNanos = pongData.getLong();
-				if (hasValidHash(pongData, pingNumber, pingTimestampNanos)) {  // matching pong
+				final var expectedHash = ByteBuffer.wrap(
+						saltedHashFunctionClone.digest(pingNumber, pingTimestampNanos));
+				if (pongData.equals(expectedHash)) {  // matching pong
 					if (failureLimit >= 0 && pingNumber != lastMatchingPongNumber + 1L) {
 						// As websocket connection is over a reliable transport (TCP or HTTP/3),
 						// nonconsecutive pongs are a symptom of a faulty implementation
@@ -562,15 +564,6 @@ public class WebsocketPingerService {
 					if (rttObserver != null) rttObserver.accept(connection, rttNanos);
 				}  // else: unsolicited pong
 			} catch (BufferUnderflowException unsolicitedPongWithShortData) {}
-		}
-
-		private boolean hasValidHash(
-			ByteBuffer bufferToVerify,
-			long pingNumber,
-			long pingTimestampNanos
-		) {
-			final var expectedHash = saltedHashFunctionClone.digest(pingNumber, pingTimestampNanos);
-			return bufferToVerify.equals(ByteBuffer.wrap(expectedHash));
 		}
 
 
