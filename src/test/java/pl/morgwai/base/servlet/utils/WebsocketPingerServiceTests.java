@@ -33,6 +33,7 @@ import static java.util.logging.Level.FINEST;
 import static java.util.logging.Level.WARNING;
 import static javax.websocket.CloseReason.CloseCodes.NORMAL_CLOSURE;
 import static javax.websocket.CloseReason.CloseCodes.PROTOCOL_ERROR;
+import static javax.websocket.CloseReason.CloseCodes.VIOLATED_POLICY;
 import static org.junit.Assert.*;
 import static pl.morgwai.base.jul.JulConfigurator.*;
 import static pl.morgwai.base.jul.JulFormatter.FORMATTER_SUFFIX;
@@ -314,7 +315,7 @@ public abstract class WebsocketPingerServiceTests {
 	@Test
 	public void testTimedOutPongAndFailureLimitExceeded() throws Exception {
 		final var PATH = "/testTimedOutPongAndFailureLimitExceeded";
-		performTest(PATH, false, PROTOCOL_ERROR, (serverEndpoint, clientEndpoint) -> {
+		performTest(PATH, false, VIOLATED_POLICY, (serverEndpoint, clientEndpoint) -> {
 			final var postPingVerificationsDone = new CountDownLatch(1);
 			final var rttReportReceived = new CountDownLatch(1);
 			final var player = new PingPongPlayer(

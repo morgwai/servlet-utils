@@ -15,6 +15,7 @@ import javax.websocket.CloseReason.CloseCodes;
 import javax.websocket.RemoteEndpoint.Async;
 
 import static java.util.concurrent.TimeUnit.*;
+import static javax.websocket.CloseReason.CloseCodes.*;
 
 
 
@@ -91,7 +92,7 @@ public class WebsocketPingerService {
 	 *     scheduler.scheduleWithFixedDelay(pingingTask, 0L, interval, intervalUnit)} when
 	 *     scheduling pings.
 	 * @param failureLimit limit of timed-out pongs: if exceeded, then the given
-	 *     {@link Session connection} is closed with {@link CloseCodes#PROTOCOL_ERROR}. Each
+	 *     {@link Session connection} is closed with {@link CloseCodes#VIOLATED_POLICY}. Each
 	 *     matching, timely pong resets the {@link Session connection}'s failure counter.
 	 * @param hashFunction name of a {@link MessageDigest} to use for ping content hashing. This
 	 *     must be supported by a registered {@link java.security.Provider security Provider} and
@@ -496,7 +497,7 @@ public class WebsocketPingerService {
 					// expect-timely-pongs mode && the previous ping timed-out
 					failureCount++;
 					if (failureCount > failureLimit) {
-						closeFailedConnection("too many timed-out pongs");
+						closeFailedConnection(VIOLATED_POLICY, "too many timed-out pongs");
 						return;
 					}
 				}
@@ -520,16 +521,18 @@ public class WebsocketPingerService {
 			} catch (IOException e) {
 				// on most container implementations the connection is PROBABLY already closed, but
 				// just in case:
-				closeFailedConnection("failed to send a ping");
+				closeFailedConnection(UNEXPECTED_CONDITION, "failed to send a ping");
 			}
 		}
 
-		private void closeFailedConnection(String reason) {
+
+
+		private void closeFailedConnection(CloseCodes code, String reason) {
 			if (log.isLoggable(Level.FINE)) {
 				log.fine("failure on connection " + connection.getId() + ": " + reason);
 			}
 			try {
-				connection.close(new CloseReason(CloseCodes.PROTOCOL_ERROR, reason));
+				connection.close(new CloseReason(code, reason));
 			} catch (IOException | RuntimeException connectionAlreadyClosed) {
 				// this MUST mean the connection is already closed...
 			}
@@ -557,7 +560,7 @@ public class WebsocketPingerService {
 					if (failureLimit >= 0 && pingNumber != lastMatchingPongNumber + 1L) {
 						// As websocket connection is over a reliable transport (TCP or HTTP/3),
 						// nonconsecutive pongs are a symptom of a faulty implementation
-						closeFailedConnection("nonconsecutive pong");
+						closeFailedConnection(PROTOCOL_ERROR, "nonconsecutive pong");
 						return;
 					}
 
