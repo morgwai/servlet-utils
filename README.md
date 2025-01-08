@@ -7,7 +7,9 @@ Copyright 2021 Piotr Morgwai Kotarbinski, Licensed under the Apache License, Ver
 [javax flavor](https://search.maven.org/artifact/pl.morgwai.base/servlet-utils/6.3-javax/jar)
 ([javadoc](https://javadoc.io/doc/pl.morgwai.base/servlet-utils/6.3-javax)) - supports Websocket `1.1` API<br/>
 [jakarta flavor](https://search.maven.org/artifact/pl.morgwai.base/servlet-utils/6.3-jakarta/jar)
-([javadoc](https://javadoc.io/doc/pl.morgwai.base/servlet-utils/6.3-jakarta)) - supports Websocket `2.0.0` to at least `2.1.1` APIs
+([javadoc](https://javadoc.io/doc/pl.morgwai.base/servlet-utils/6.3-jakarta)) - supports Websocket `2.0.0` to at least `2.1.1` APIs<br/>
+<br/>
+See [CHANGES](CHANGES.md) file for the summary of changes. If a major version remains unchanged, a given release is supposed to be backwards compatible in terms of API and behaviour with all previous ones with the same major version.
 
 
 ## MAIN USER CLASSES
