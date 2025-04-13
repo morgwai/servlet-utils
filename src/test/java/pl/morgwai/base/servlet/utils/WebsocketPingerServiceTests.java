@@ -666,7 +666,7 @@ public abstract class WebsocketPingerServiceTests {
 				final var url = URI.create(urlString);
 				for (int i = 0; i < connectionsPerUrl; i++) {
 					service.addConnection(
-						clientContainer.connectToServer(new DumbEndpoint(service), null, url),
+						clientContainer.connectToServer(new DumbClientEndpoint(service), null, url),
 						(connection, rttNanos) -> {
 							maxRtt.getAndUpdate(currentMax -> max(currentMax, rttNanos));
 							if (pongsReceived[0] != null) pongsReceived[0].countDown();
@@ -711,11 +711,11 @@ public abstract class WebsocketPingerServiceTests {
 		}
 	}
 
-	public static class DumbEndpoint extends Endpoint {
+	public static class DumbClientEndpoint extends Endpoint {
 
 		final WebsocketPingerService pingerService;
 
-		public DumbEndpoint(WebsocketPingerService pingerService) {
+		public DumbClientEndpoint(WebsocketPingerService pingerService) {
 			this.pingerService = pingerService;
 		}
 
