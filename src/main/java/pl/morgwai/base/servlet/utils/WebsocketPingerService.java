@@ -49,33 +49,6 @@ public class WebsocketPingerService {
 
 
 	/**
-	 * {@value #DEFAULT_INTERVAL_SECONDS}s as majority of proxies and NAT routers have a timeout of
-	 * at least 60s.
-	 */
-	public static final int DEFAULT_INTERVAL_SECONDS = 55;
-	final long intervalNanos;
-
-	/** The maximum length of ping data in bytes as per websocket spec. */
-	public static final int MAX_PING_DATA_BYTES = 125;
-	/**
-	 * The maximum allowed length of hashes produced by {@link MessageDigest hashFunction} passed to
-	 * {@link
-	 * #WebsocketPingerService(long, TimeUnit, int, String, ScheduledExecutorService, boolean)
-	 * the constructor}.
-	 */
-	public static final int MAX_HASH_LENGTH_BYTES = MAX_PING_DATA_BYTES - (2 * Long.BYTES);
-
-	/** Default {@link MessageDigest} for hashing ping content. */
-	public static final String DEFAULT_HASH_FUNCTION = "SHA3-256";
-	final String hashFunction;
-
-	final int failureLimit;  // negative value means keep-alive-only mode
-	final boolean synchronizeSending;
-	final ScheduledExecutorService scheduler;
-
-
-
-	/**
 	 * Constructs a new {@code Service} in {@code expect-timely-pongs} mode.
 	 * Each timeout increments the corresponding {@link Session connection}'s failure count,
 	 * unmatched pongs are ignored, matching pongs received in a nonconsecutive order cause the
@@ -224,6 +197,39 @@ public class WebsocketPingerService {
 
 
 
+	/** The maximum length of ping data in bytes as per websocket spec. */
+	public static final int MAX_PING_DATA_BYTES = 125;
+	/**
+	 * The maximum allowed length of hashes produced by {@link MessageDigest hashFunction} passed to
+	 * {@link
+	 * #WebsocketPingerService(long, TimeUnit, int, String, ScheduledExecutorService, boolean)
+	 * the constructor}.
+	 */
+	public static final int MAX_HASH_LENGTH_BYTES = MAX_PING_DATA_BYTES - (2 * Long.BYTES);
+
+	/**
+	 * {@value #DEFAULT_INTERVAL_SECONDS}s as majority of proxies and NAT routers have a timeout of
+	 * at least 60s.
+	 */
+	public static final int DEFAULT_INTERVAL_SECONDS = 55;
+	final long intervalNanos;
+
+	/** Default {@link MessageDigest} for hashing ping content. */
+	public static final String DEFAULT_HASH_FUNCTION = "SHA3-256";
+	final String hashFunction;
+
+	final int failureLimit;  // negative value means keep-alive-only mode
+	final boolean synchronizeSending;
+	final ScheduledExecutorService scheduler;
+
+	final ConcurrentMap<Session, PingPongPlayer> connectionPingPongPlayers =
+			new ConcurrentHashMap<>();
+	/** Tasks periodic on {@link #scheduler}, that execute {@link PingPongPlayer#sendPing()}. */
+	final ConcurrentMap<Session, ScheduledFuture<?>> connectionPingingTasks =
+			new ConcurrentHashMap<>();
+
+
+
 	/** Low-level constructor that performs the actual initialization. */
 	WebsocketPingerService(
 		long interval,
@@ -250,14 +256,6 @@ public class WebsocketPingerService {
 		this.hashFunction = hashFunction;
 		this.scheduler = scheduler;
 	}
-
-
-
-	final ConcurrentMap<Session, PingPongPlayer> connectionPingPongPlayers =
-			new ConcurrentHashMap<>();
-	/** Tasks periodic on {@link #scheduler}, that execute {@link PingPongPlayer#sendPing()}. */
-	final ConcurrentMap<Session, ScheduledFuture<?>> connectionPingingTasks =
-			new ConcurrentHashMap<>();
 
 
 
