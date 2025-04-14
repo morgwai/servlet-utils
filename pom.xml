@@ -9,7 +9,7 @@
 	<version>6.4-SNAPSHOT-javax</version><!--jakarta-->
 
 	<name>Servlet utils</name>
-	<description>Some helpful classes when developing servlets</description>
+	<description>Some helpful classes when developing Servlets and websocket Endpoints</description>
 	<url>https://github.com/morgwai/servlet-utils</url>
 
 	<licenses>
