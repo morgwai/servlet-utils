@@ -108,8 +108,9 @@ public class WebsocketPingerService {
 	/**
 	 * Calls {@link #WebsocketPingerService(long, TimeUnit, int, String, ScheduledExecutorService,
 	 * boolean) WebsocketPingerService} <code>(interval, intervalUnit, failureLimit,
-	 * {@value #DEFAULT_HASH_FUNCTION}, {@link #newDefaultScheduler()}, false)</code>
-	 * ({@code expect-timely-pongs} mode).
+	 * {@value #DEFAULT_HASH_FUNCTION}, {@link Executors#newScheduledThreadPool(int)
+	 * Executors.newScheduledThreadPool}({@link Runtime#availableProcessors() availableProcessors}),
+	 * false)</code> ({@code expect-timely-pongs} mode).
 	 */
 	public WebsocketPingerService(long interval, TimeUnit intervalUnit, int failureLimit) {
 		this(
@@ -117,7 +118,7 @@ public class WebsocketPingerService {
 			intervalUnit,
 			failureLimit,
 			DEFAULT_HASH_FUNCTION,
-			newDefaultScheduler(),
+			Executors.newScheduledThreadPool(Runtime.getRuntime().availableProcessors()),
 			false
 		);
 	}
@@ -126,18 +127,12 @@ public class WebsocketPingerService {
 	 * Calls {@link
 	 * #WebsocketPingerService(long, TimeUnit, int, String, ScheduledExecutorService, boolean)
 	 * WebsocketPingerService}<code>({@link #DEFAULT_INTERVAL_SECONDS}, SECONDS, failureLimit,
-	 * {@value #DEFAULT_HASH_FUNCTION}, {@link #newDefaultScheduler()}, false)</code>
-	 * ({@code expect-timely-pongs} mode).
+	 * {@value #DEFAULT_HASH_FUNCTION}, {@link Executors#newScheduledThreadPool(int)
+	 * Executors.newScheduledThreadPool}({@link Runtime#availableProcessors() availableProcessors}),
+	 * false)</code> ({@code expect-timely-pongs} mode).
 	 */
 	public WebsocketPingerService(int failureLimit) {
-		this(
-			DEFAULT_INTERVAL_SECONDS,
-			SECONDS,
-			failureLimit,
-			DEFAULT_HASH_FUNCTION,
-			newDefaultScheduler(),
-			false
-		);
+		this(DEFAULT_INTERVAL_SECONDS, SECONDS, failureLimit);
 	}
 
 	// design decision note: using interval as a timeout simplifies things A LOT. Using a separate
@@ -168,27 +163,30 @@ public class WebsocketPingerService {
 	 * Calls
 	 * {@link #WebsocketPingerService(long, TimeUnit, String, ScheduledExecutorService, boolean)
 	 * WebsocketPingerService}<code>(interval, intervalUnit, {@value #DEFAULT_HASH_FUNCTION},
-	 * {@link #newDefaultScheduler()}, false)</code> ({@code keep-alive-only} mode).
+	 * {@link Executors#newScheduledThreadPool(int)
+	 * Executors.newScheduledThreadPool}({@link Runtime#availableProcessors() availableProcessors}),
+	 * false)</code> ({@code keep-alive-only} mode).
 	 */
 	public WebsocketPingerService(long interval, TimeUnit intervalUnit) {
-		this(interval, intervalUnit, DEFAULT_HASH_FUNCTION, newDefaultScheduler(), false);
+		this(
+			interval,
+			intervalUnit,
+			DEFAULT_HASH_FUNCTION,
+			Executors.newScheduledThreadPool(Runtime.getRuntime().availableProcessors()),
+			false
+		);
 	}
 
 	/**
 	 * Calls
 	 * {@link #WebsocketPingerService(long, TimeUnit, String, ScheduledExecutorService, boolean)
 	 * WebsocketPingerService}<code>({@link #DEFAULT_INTERVAL_SECONDS}, SECONDS,
-	 * {@value #DEFAULT_HASH_FUNCTION}, {@link #newDefaultScheduler()}, false)</code>
-	 * ({@code keep-alive-only} mode).
+	 * {@value #DEFAULT_HASH_FUNCTION}, {@link Executors#newScheduledThreadPool(int)
+	 * Executors.newScheduledThreadPool}({@link Runtime#availableProcessors() availableProcessors}),
+	 * false)</code> ({@code keep-alive-only} mode).
 	 */
 	public WebsocketPingerService() {
-		this(
-			DEFAULT_INTERVAL_SECONDS,
-			SECONDS,
-			DEFAULT_HASH_FUNCTION,
-			newDefaultScheduler(),
-			false
-		);
+		this(DEFAULT_INTERVAL_SECONDS, SECONDS);
 	}
 
 	// design decision note: while it is possible to use unsolicited pongs for keep-alive-only,
@@ -636,6 +634,7 @@ public class WebsocketPingerService {
 	 * Returns {@link Executors#newScheduledThreadPool(int)
 	 * Executors.newScheduledThreadPool}({@link Runtime#availableProcessors() availableProcessors}).
 	 */
+	@Deprecated(forRemoval = true)
 	public static ScheduledExecutorService newDefaultScheduler() {
 		return Executors.newScheduledThreadPool(Runtime.getRuntime().availableProcessors());
 	}

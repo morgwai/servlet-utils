@@ -1,5 +1,8 @@
 # Summaries of visible changes between releases
 
+### 6.4
+- Deprecate `newDefaultScheduler()`.
+
 ### 6.3
 - Use `VIOLATED_POLICY` close code in case of too many timeouts (instead of `PROTOCOL_ERROR`).
 
