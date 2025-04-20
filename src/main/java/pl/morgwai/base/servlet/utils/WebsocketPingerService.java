@@ -568,8 +568,8 @@ public class WebsocketPingerService {
 						if (rttNanos <= timeoutNanos) failureCount = 0;
 					}
 					if (rttObserver != null) rttObserver.accept(connection, rttNanos);
-				}  // else: unsolicited pong
-			} catch (BufferUnderflowException unsolicitedPongWithShortData) {}
+				}  // else: ignored unsolicited pong
+			} catch (BufferUnderflowException ignoredUnsolicitedPongWithShortData) {}
 		}
 
 
