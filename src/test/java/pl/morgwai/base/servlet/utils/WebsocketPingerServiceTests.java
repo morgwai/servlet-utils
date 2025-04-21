@@ -768,7 +768,7 @@ public abstract class WebsocketPingerServiceTests {
 	/** {@code FINE} will log all endpoint lifecycle method calls. */
 	@BeforeClass
 	public static void setupLogging() {
-		addOrReplaceLoggingConfigProperties(Map.of(
+		addOrReplaceLogConfigProperties(Map.of(
 			LEVEL_SUFFIX, WARNING.toString(),
 			ConsoleHandler.class.getName() + FORMATTER_SUFFIX, JulFormatter.class.getName(),
 			ConsoleHandler.class.getName() + LEVEL_SUFFIX, FINEST.toString()
