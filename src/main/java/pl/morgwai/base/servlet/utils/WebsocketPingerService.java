@@ -208,6 +208,7 @@ public class WebsocketPingerService {
 	public static final int MAX_HASH_LENGTH_BYTES = MAX_PING_DATA_BYTES - (2 * Long.BYTES);
 
 	/**
+	 * Default interval between pings in seconds.
 	 * {@value #DEFAULT_INTERVAL_SECONDS}s as majority of proxies and NAT routers have a timeout of
 	 * at least 60s.
 	 */
